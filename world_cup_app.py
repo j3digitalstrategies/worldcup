@@ -32,7 +32,6 @@ def connect_to_sheet():
     creds_dict = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
-    # Ensure this matches your Google Sheet name exactly
     return client.open("World_Cup_Pool_Data").sheet1
 
 # --- API DATA FETCHING ---
@@ -96,21 +95,12 @@ if page == "Make Predictions":
             try:
                 sheet = connect_to_sheet()
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                # Append row: [Timestamp, Name, GroupA1, GroupA2... Status]
                 sheet.append_row([timestamp, user_name] + all_picks + ["Pending"])
                 st.success("Predictions Saved!")
                 
-                # RESTORED: Download Section
-                st.markdown("### 📥 Save Your Picks")
                 df_user = pd.DataFrame(summary_data)
                 csv = df_user.to_csv(index=False).encode('utf-8')
-                
-                st.download_button(
-                    label="Download My Picks (.csv)",
-                    data=csv,
-                    file_name=f"{user_name}_WC2026_Picks.csv",
-                    mime="text/csv",
-                )
+                st.download_button(label="Download My Picks (.csv)", data=csv, file_name=f"{user_name}_WC2026_Picks.csv", mime="text/csv")
                 st.balloons()
             except Exception as e:
                 st.error(f"Error saving to Google Sheets: {e}")
@@ -124,27 +114,35 @@ elif page == "Leaderboard":
             sheet = connect_to_sheet()
             records = sheet.get_all_records()
             if records:
+                # Convert list of dicts to DataFrame
                 df = pd.DataFrame(records)
                 
-                def run_scoring(row):
-                    score = 0
-                    # Convert row to list to access by index
-                    # Index 0: Timestamp, Index 1: Name, Index 2+: Picks
-                    row_vals = list(row.values())
-                    for g_idx in range(12):
-                        start = 2 + (g_idx * 4)
-                        for i in range(3): # Score only top 3 picks per group
-                            try:
-                                if row_vals[start + i] in official_list:
-                                    score += 1
-                            except IndexError:
-                                continue
-                    return score
+                def calculate_user_score(row):
+                    total = 0
+                    # Convert row to list to avoid 'ArrowStringArray' indexing issues
+                    vals = list(row.values)
+                    # Start at index 2 (after Timestamp and Name)
+                    # Loop through 12 groups, checking the first 3 picks of each
+                    for g in range(12):
+                        start_idx = 2 + (g * 4)
+                        # Check picks 1, 2, and 3
+                        for offset in range(3):
+                            if (start_idx + offset) < len(vals):
+                                pick = str(vals[start_idx + offset])
+                                if pick in official_list:
+                                    total += 1
+                    return total
+
+                # Apply the score function
+                df['Points'] = df.apply(calculate_user_score, axis=1)
                 
-                df['Points'] = df.apply(run_scoring, axis=1)
-                # Ensure 'Status' column exists in your sheet for this to work
-                final_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
-                st.table(final_df)
+                # Check if 'Status' column exists; if not, create it as 'N/A'
+                if 'Status' not in df.columns:
+                    df['Status'] = 'Pending'
+
+                # Clean up and sort
+                leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
+                st.dataframe(leaderboard_df, use_container_width=True, hide_index=True)
             else:
                 st.info("No entries yet.")
         except Exception as e:
@@ -154,21 +152,9 @@ elif page == "Leaderboard":
 elif page == "Rules":
     st.title("📜 Pool Rules & Payment")
     st.warning("⚠️ **Deadline:** All picks for the first round must be submitted before kickoff of the first match.")
-    
     st.subheader("💰 Entry Fee")
     st.write("* **$10 USD / $15 CAD / £7.50 GBP**")
-    
     st.subheader("💳 How to Pay")
     st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
-    
     st.subheader("🏆 Prizes")
-    st.write("* **1st Place:** 70% of the total pot")
-    st.write("* **2nd Place:** 20% of the total pot")
-    st.write("* **3rd Place:** Entry fee refund")
-
-    st.subheader("⚽ Scoring Logic")
-    st.markdown("""
-    * **1 Point** for every team in your **Top 3** that advances to the Round of 32.
-    * Scores are updated automatically via live tournament data.
-    * Participants must be marked as **'Paid'** in the 'Status' column of the sheet to be eligible.
-    """)
+    st.write("* **1st Place:** 70% of the total pot | **2nd Place:** 20% | **3rd Place:** Entry fee refund")
