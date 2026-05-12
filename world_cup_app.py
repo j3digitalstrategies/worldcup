@@ -4,6 +4,7 @@ import gspread
 import requests
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import io
 
 # --- CONFIGURATION ---
 API_KEY = '63ba1313af494222bddfb7f14879b920' 
@@ -28,10 +29,10 @@ groups = {
 # --- GOOGLE SHEETS CONNECTION ---
 def connect_to_sheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    # Accessing secrets from the TOML configuration
     creds_dict = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
+    # Ensure this matches your Google Sheet name exactly
     return client.open("World_Cup_Pool_Data").sheet1
 
 # --- API DATA FETCHING ---
@@ -50,110 +51,124 @@ def get_official_advancers():
                     advancers.extend([table[0]['team']['name'], table[1]['team']['name']])
                 if len(table) >= 3:
                     thirds.append({'name': table[2]['team']['name'], 'pts': table[2]['points'], 'gd': table[2]['goalDifference']})
-            # Best 8 third-place teams advance in the 48-team format
             thirds.sort(key=lambda x: (x['pts'], x['gd']), reverse=True)
             advancers.extend([t['name'] for t in thirds[:8]])
         return advancers
-    except Exception:
+    except:
         return []
 
 # --- APP UI SETUP ---
-st.set_page_config(page_title="2026 World Cup Pool", layout="wide")
+st.set_page_config(page_title="2026 WC Portal", layout="wide")
+page = st.sidebar.radio("Navigation", ["Make Predictions", "Leaderboard", "Rules"])
 
-# Sidebar Navigation
-st.sidebar.title("Tournament Menu")
-page = st.sidebar.radio("Go to:", ["Make Predictions", "Leaderboard", "Rules"])
-
-# User Info Sidebar
 with st.sidebar:
-    st.divider()
-    user_name = st.text_input("Enter Your Full Name:")
+    st.header("Player Info")
+    user_name = st.text_input("Full Name:")
 
 # --- PAGE 1: PREDICTIONS ---
 if page == "Make Predictions":
-    st.title("🏆 2026 World Cup Group Stage Predictions")
-    st.markdown("Rank the teams in each group from **1st to 4th**. Your top 3 picks will earn you points if they advance.")
+    st.title("🏆 2026 World Cup Predictions")
+    st.info("Rank teams 1-4. Your top 3 picks are used for scoring.")
     
     all_picks = []
-    cols = st.columns(3) 
-    
+    summary_data = [] 
+    cols = st.columns(4) 
     for i, (group_name, teams) in enumerate(groups.items()):
-        with cols[i % 3]:
-            st.subheader(group_name)
-            p1 = st.selectbox("1st Place", ["--"] + teams, key=f"{group_name}_1")
-            rem2 = [t for t in teams if t != p1]
-            p2 = st.selectbox("2nd Place", ["--"] + rem2, key=f"{group_name}_2")
-            rem3 = [t for t in rem2 if t != p2]
-            p3 = st.selectbox("3rd Place", ["--"] + rem3, key=f"{group_name}_3")
-            rem4 = [t for t in rem3 if t != p3]
-            p4 = st.selectbox("4th Place", ["--"] + rem4, key=f"{group_name}_4")
-            all_picks.extend([p1, p2, p3, p4])
+        with cols[i % 4]:
+            st.markdown(f"### {group_name}")
+            r1 = st.selectbox("1st", ["--"] + teams, key=f"{group_name}_1")
+            rem2 = [t for t in teams if t != r1]
+            r2 = st.selectbox("2nd", ["--"] + rem2, key=f"{group_name}_2")
+            rem3 = [t for t in rem2 if t != r2]
+            r3 = st.selectbox("3rd", ["--"] + rem3, key=f"{group_name}_3")
+            rem4 = [t for t in rem3 if t != r3]
+            r4 = st.selectbox("4th", ["--"] + rem4, key=f"{group_name}_4")
+            
+            all_picks.extend([r1, r2, r3, r4])
+            summary_data.append({"Group": group_name, "1st": r1, "2nd": r2, "3rd": r3, "4th": r4})
 
-    if st.button("Submit My Picks", use_container_width=True):
+    if st.button("Submit Rankings", use_container_width=True):
         if not user_name:
-            st.error("Please enter your name in the sidebar.")
+            st.error("Enter your name in the sidebar.")
         elif "--" in all_picks:
-            st.error("Please complete all rankings for every group.")
+            st.error("Complete all rankings.")
         else:
             try:
                 sheet = connect_to_sheet()
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Append row: [Timestamp, Name, GroupA1, GroupA2... Status]
                 sheet.append_row([timestamp, user_name] + all_picks + ["Pending"])
-                st.success("Your predictions have been saved successfully!")
+                st.success("Predictions Saved!")
+                
+                # RESTORED: Download Section
+                st.markdown("### 📥 Save Your Picks")
+                df_user = pd.DataFrame(summary_data)
+                csv = df_user.to_csv(index=False).encode('utf-8')
+                
+                st.download_button(
+                    label="Download My Picks (.csv)",
+                    data=csv,
+                    file_name=f"{user_name}_WC2026_Picks.csv",
+                    mime="text/csv",
+                )
                 st.balloons()
             except Exception as e:
-                st.error("Error connecting to Google Sheets. Verify your Secrets configuration.")
+                st.error(f"Error saving to Google Sheets: {e}")
 
 # --- PAGE 2: LEADERBOARD ---
 elif page == "Leaderboard":
-    st.title("📊 Tournament Leaderboard")
-    with st.spinner("Fetching live results..."):
+    st.title("📊 Live Automated Leaderboard")
+    with st.spinner("Calculating live scores..."):
         official_list = get_official_advancers()
         try:
             sheet = connect_to_sheet()
-            data = sheet.get_all_records()
-            if data:
-                df = pd.DataFrame(data)
+            records = sheet.get_all_records()
+            if records:
+                df = pd.DataFrame(records)
                 
-                def calculate_score(row):
-                    points = 0
-                    row_list = list(row.values())
-                    # Data starts at index 2 (after Timestamp and Name)
-                    # Groups are in chunks of 4; we score the top 3 of each chunk
+                def run_scoring(row):
+                    score = 0
+                    # Convert row to list to access by index
+                    # Index 0: Timestamp, Index 1: Name, Index 2+: Picks
+                    row_vals = list(row.values())
                     for g_idx in range(12):
-                        start_col = 2 + (g_idx * 4)
-                        for rank_offset in range(3): 
-                            pick = row_list[start_col + rank_offset]
-                            if pick in official_list:
-                                points += 1
-                    return points
+                        start = 2 + (g_idx * 4)
+                        for i in range(3): # Score only top 3 picks per group
+                            try:
+                                if row_vals[start + i] in official_list:
+                                    score += 1
+                            except IndexError:
+                                continue
+                    return score
                 
-                df['Score'] = df.apply(calculate_score, axis=1)
-                leaderboard = df[['Name', 'Score', 'Status']].sort_values(by='Score', ascending=False)
-                st.table(leaderboard)
+                df['Points'] = df.apply(run_scoring, axis=1)
+                # Ensure 'Status' column exists in your sheet for this to work
+                final_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
+                st.table(final_df)
             else:
-                st.info("No submissions found yet.")
-        except Exception:
-            st.error("Could not load the leaderboard.")
+                st.info("No entries yet.")
+        except Exception as e:
+            st.error(f"Leaderboard Error: {e}")
 
 # --- PAGE 3: RULES ---
 elif page == "Rules":
-    st.title("📜 Rules and Information")
+    st.title("📜 Pool Rules & Payment")
+    st.warning("⚠️ **Deadline:** All picks for the first round must be submitted before kickoff of the first match.")
     
-    st.subheader("Entry Details")
-    st.write("- **Fee:** $10 USD / $15 CAD / £7.50 GBP")
-    st.write("- **Deadline:** Picks must be submitted before the first match of the tournament kicks off.")
+    st.subheader("💰 Entry Fee")
+    st.write("* **$10 USD / $15 CAD / £7.50 GBP**")
     
-    st.subheader("Scoring System")
-    st.info("You earn **1 Point** for every team in your predicted **Top 3** of a group that officially advances to the Round of 32.")
+    st.subheader("💳 How to Pay")
+    st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
     
-    st.subheader("Payment Info")
+    st.subheader("🏆 Prizes")
+    st.write("* **1st Place:** 70% of the total pot")
+    st.write("* **2nd Place:** 20% of the total pot")
+    st.write("* **3rd Place:** Entry fee refund")
+
+    st.subheader("⚽ Scoring Logic")
     st.markdown("""
-    - **Venmo (USA):** @jhradecky
-    - **E-transfer (Canada):** julien.hradecky@gmail.com
+    * **1 Point** for every team in your **Top 3** that advances to the Round of 32.
+    * Scores are updated automatically via live tournament data.
+    * Participants must be marked as **'Paid'** in the 'Status' column of the sheet to be eligible.
     """)
-    
-    st.subheader("Prize Breakdown")
-    st.write("1. **1st Place:** 70% of the pot")
-    st.write("2. **2nd Place:** 20% of the pot")
-    st.write("3. **3rd Place:** Entry fee refund")
