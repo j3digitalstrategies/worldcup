@@ -148,7 +148,7 @@ elif page == "Leaderboard":
             st.error(f"Leaderboard Error: {e}")
 
 # --- PAGE 3: RULES & FORUM ---
-elif page == "Rules":
+elif page == "Chat Forum & Rules":
     st.title("📜 Pool Rules & Payment")
     
     # Rules Section
@@ -156,7 +156,7 @@ elif page == "Rules":
         st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
         st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
         st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
-        st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
+        st.write("**Prizes:** 1st: 70% of Pool | 2nd: 20% of Pool | 3rd: Entry Fee Refund")
 
     st.divider()
 
