@@ -61,7 +61,7 @@ def get_official_advancers():
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
-page = st.sidebar.radio("Navigation", ["Make Predictions", "Leaderboard", "Rules"])
+page = st.sidebar.radio("Navigation", ["Make Predictions", "Leaderboard", "Chat Forum & Rules"])
 
 with st.sidebar:
     st.header("Player Info")
