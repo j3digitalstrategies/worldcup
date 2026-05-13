@@ -27,12 +27,15 @@ groups = {
 }
 
 # --- GOOGLE SHEETS CONNECTION ---
-def connect_to_sheet():
+def connect_to_sheet(tab_name="sheet1"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
-    return client.open("World_Cup_Pool_Data").sheet1
+    spreadsheet = client.open("World_Cup_Pool_Data")
+    if tab_name == "sheet1":
+        return spreadsheet.sheet1
+    return spreadsheet.worksheet(tab_name)
 
 # --- API DATA FETCHING ---
 @st.cache_data(ttl=3600) 
@@ -98,6 +101,7 @@ if page == "Make Predictions":
                 sheet.append_row([timestamp, user_name] + all_picks + ["Pending"])
                 st.success("Predictions Saved!")
                 
+                # CSV Download functionality restored
                 df_user = pd.DataFrame(summary_data)
                 csv = df_user.to_csv(index=False).encode('utf-8')
                 st.download_button(label="Download My Picks (.csv)", data=csv, file_name=f"{user_name}_WC2026_Picks.csv", mime="text/csv")
@@ -114,18 +118,18 @@ elif page == "Leaderboard":
             sheet = connect_to_sheet()
             records = sheet.get_all_records()
             if records:
-                # Convert list of dicts to DataFrame
                 df = pd.DataFrame(records)
                 
                 def calculate_user_score(row):
+                    # Gate scoring so points remain 0 until tournament start
+                    tournament_start = datetime(2026, 6, 11)
+                    if datetime.now() < tournament_start:
+                        return 0
+                        
                     total = 0
-                    # Convert row to list to avoid 'ArrowStringArray' indexing issues
                     vals = list(row.values)
-                    # Start at index 2 (after Timestamp and Name)
-                    # Loop through 12 groups, checking the first 3 picks of each
                     for g in range(12):
                         start_idx = 2 + (g * 4)
-                        # Check picks 1, 2, and 3
                         for offset in range(3):
                             if (start_idx + offset) < len(vals):
                                 pick = str(vals[start_idx + offset])
@@ -133,14 +137,9 @@ elif page == "Leaderboard":
                                     total += 1
                     return total
 
-                # Apply the score function
                 df['Points'] = df.apply(calculate_user_score, axis=1)
-                
-                # Check if 'Status' column exists; if not, create it as 'N/A'
                 if 'Status' not in df.columns:
                     df['Status'] = 'Pending'
-
-                # Clean up and sort
                 leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
                 st.dataframe(leaderboard_df, use_container_width=True, hide_index=True)
             else:
@@ -148,13 +147,52 @@ elif page == "Leaderboard":
         except Exception as e:
             st.error(f"Leaderboard Error: {e}")
 
-# --- PAGE 3: RULES ---
+# --- PAGE 3: RULES & FORUM ---
 elif page == "Rules":
     st.title("📜 Pool Rules & Payment")
-    st.warning("⚠️ **Deadline:** All picks for the first round must be submitted before kickoff of the first match.")
-    st.subheader("💰 Entry Fee")
-    st.write("* **$10 USD / $15 CAD / £7.50 GBP**")
-    st.subheader("💳 How to Pay")
-    st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
-    st.subheader("🏆 Prizes")
-    st.write("* **1st Place:** 70% of the total pot | **2nd Place:** 20% | **3rd Place:** Entry fee refund")
+    
+    # Rules Section
+    with st.expander("View Full Rules & Payment Details", expanded=True):
+        st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
+        st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
+        st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
+        st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
+
+    st.divider()
+
+    # --- FORUM SECTION ---
+    st.header("💬 Chat Forum")
+    
+    # 1. Message Entry
+    with st.form("chat_form", clear_on_submit=True):
+        comment = st.text_area("Share a question or talk some trash:")
+        submitted = st.form_submit_button("Post Message")
+        
+        if submitted:
+            if not user_name:
+                st.error("Please enter your name in the sidebar before posting.")
+            elif not comment:
+                st.error("Message cannot be empty.")
+            else:
+                try:
+                    chat_sheet = connect_to_sheet("Chat_Data")
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    chat_sheet.append_row([now, user_name, comment])
+                    st.success("Message posted!")
+                except:
+                    st.error("Could not post message. Did you create the 'Chat_Data' tab in Google Sheets?")
+
+    # 2. Message Display
+    try:
+        chat_sheet = connect_to_sheet("Chat_Data")
+        messages = chat_sheet.get_all_records()
+        if messages:
+            # Display last 15 messages, newest at top
+            for msg in reversed(messages[-15:]):
+                st.markdown(f"**{msg['User']}** ({msg['Timestamp']})")
+                st.write(msg['Message'])
+                st.divider()
+        else:
+            st.info("No messages yet. Be the first to start the conversation!")
+    except:
+        st.warning("Chat history is currently unavailable.")
