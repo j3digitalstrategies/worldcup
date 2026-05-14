@@ -61,11 +61,20 @@ def get_official_advancers():
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
-page = st.sidebar.radio("Navigation", ["Make Predictions", "Leaderboard", "Chat Forum & Rules"])
+page = st.sidebar.radio("Navigation", ["Make Predictions", "Leaderboard", "Rules"])
 
 with st.sidebar:
     st.header("Player Info")
     user_name = st.text_input("Full Name:")
+    
+    st.divider()
+    # QR Code and Instagram Info
+    st.markdown("### 📸 Stay Connected")
+    st.write("Make sure you follow the official instagram **@2026fifawcp** for updates and general banter.")
+    try:
+        st.image("qr-code.png", caption="Scan to follow", use_container_width=True)
+    except:
+        st.caption("(QR Code image file missing in repository)")
 
 # --- PAGE 1: PREDICTIONS ---
 if page == "Make Predictions":
@@ -101,7 +110,6 @@ if page == "Make Predictions":
                 sheet.append_row([timestamp, user_name] + all_picks + ["Pending"])
                 st.success("Predictions Saved!")
                 
-                # CSV Download functionality restored
                 df_user = pd.DataFrame(summary_data)
                 csv = df_user.to_csv(index=False).encode('utf-8')
                 st.download_button(label="Download My Picks (.csv)", data=csv, file_name=f"{user_name}_WC2026_Picks.csv", mime="text/csv")
@@ -121,7 +129,6 @@ elif page == "Leaderboard":
                 df = pd.DataFrame(records)
                 
                 def calculate_user_score(row):
-                    # Gate scoring so points remain 0 until tournament start
                     tournament_start = datetime(2026, 6, 11)
                     if datetime.now() < tournament_start:
                         return 0
@@ -148,22 +155,18 @@ elif page == "Leaderboard":
             st.error(f"Leaderboard Error: {e}")
 
 # --- PAGE 3: RULES & FORUM ---
-elif page == "Chat Forum & Rules":
+elif page == "Rules":
     st.title("📜 Pool Rules & Payment")
     
-    # Rules Section
     with st.expander("View Full Rules & Payment Details", expanded=True):
         st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
         st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
         st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
-        st.write("**Prizes:** 1st: 70% of Pool | 2nd: 20% of Pool | 3rd: Entry Fee Refund")
+        st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
 
     st.divider()
 
-    # --- FORUM SECTION ---
     st.header("💬 Chat Forum")
-    
-    # 1. Message Entry
     with st.form("chat_form", clear_on_submit=True):
         comment = st.text_area("Share a question or talk some trash:")
         submitted = st.form_submit_button("Post Message")
@@ -180,14 +183,12 @@ elif page == "Chat Forum & Rules":
                     chat_sheet.append_row([now, user_name, comment])
                     st.success("Message posted!")
                 except:
-                    st.error("Could not post message. Did you create the 'Chat_Data' tab in Google Sheets?")
+                    st.error("Could not post message. Ensure the 'Chat_Data' tab exists.")
 
-    # 2. Message Display
     try:
         chat_sheet = connect_to_sheet("Chat_Data")
         messages = chat_sheet.get_all_records()
         if messages:
-            # Display last 15 messages, newest at top
             for msg in reversed(messages[-15:]):
                 st.markdown(f"**{msg['User']}** ({msg['Timestamp']})")
                 st.write(msg['Message'])
