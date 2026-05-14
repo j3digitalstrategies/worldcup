@@ -69,7 +69,7 @@ with st.sidebar:
     
     st.divider()
     # QR Code and Instagram Info
-    st.markdown("### 📸 Stay Connected")
+    st.markdown("### 📸 Official Instagram")
     st.write("Make sure you follow the official instagram **@2026fifawcp** for updates and general banter.")
     try:
         st.image("qr-code.png", caption="Scan to follow", use_container_width=True)
