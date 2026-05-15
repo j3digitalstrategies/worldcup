@@ -161,7 +161,7 @@ elif page == "Rules":
     with st.expander("View Full Rules & Payment Details", expanded=True):
         st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
         st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
-        st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com \n**UK/EU:** send a carrier pidgeon to Jack Johnson")
+        st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com  \n**UK/EU:** Send a carrier pidgeon to Jack Johnson")
         st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
 
     st.divider()
