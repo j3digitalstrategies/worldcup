@@ -142,7 +142,8 @@ def get_live_standings():
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
-page = st.sidebar.radio("Navigation", ["Leaderboard", "Make Predictions", "Rules"])
+# Renamed navigation item here
+page = st.sidebar.radio("Navigation", ["Leaderboard", "Make Predictions", "Rules & Chat Forum"])
 
 with st.sidebar:
     st.header("Player Info")
@@ -204,14 +205,11 @@ if page == "Leaderboard":
                         if not current_live_order:
                             continue
                             
-                        # Extract explicit row selections
                         p1 = str(row.get(f"{group_name}_1st", "")).strip()
                         p2 = str(row.get(f"{group_name}_2nd", "")).strip()
                         p3 = str(row.get(f"{group_name}_3rd", "")).strip()
                         p4 = str(row.get(f"{group_name}_4th", "")).strip()
                         
-                        # --- STRICT POSITION MATCHING LOGIC ---
-                        # Index 0 is 1st place, Index 1 is 2nd place, etc.
                         if len(current_live_order) >= 1 and p1 == current_live_order[0]:
                             total_points += 1
                         if len(current_live_order) >= 2 and p2 == current_live_order[1]:
@@ -273,12 +271,13 @@ elif page == "Make Predictions":
             except Exception as e:
                 st.error(f"Error saving to Google Sheets: {e}")
 
-# --- PAGE 3: RULES ---
-elif page == "Rules":
+# --- PAGE 3: RULES & CHAT FORUM ---
+elif page == "Rules & Chat Forum":
     st.title("📜 Pool Rules & Payment")
     
     with st.expander("View Full Rules & Payment Details", expanded=True):
         st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
+        st.write("**Scoring System:** Each correct position pick = 1 point.")
         st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
         st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com  \n**UK/EU:** Send a carrier pidgeon to Jack Johnson")
         st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
