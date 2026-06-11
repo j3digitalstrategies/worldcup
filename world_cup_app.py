@@ -274,11 +274,11 @@ elif page == "Make Predictions":
                 st.error(f"Error saving to Google Sheets: {e}")
 
 # --- PAGE 3: RULES ---
-elif page == "Rules":
+elif page == "Rules & Chat":
     st.title("📜 Pool Rules & Payment")
     
     with st.expander("View Full Rules & Payment Details", expanded=True):
-        st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
+        st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026. Each correct pick will be awarded 1 point.")
         st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
         st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com  \n**UK/EU:** Send a carrier pidgeon to Jack Johnson")
         st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
