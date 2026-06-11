@@ -48,7 +48,6 @@ def get_live_standings():
     """
     Fetches live standings and constructs a dictionary mapping:
     Group Letter -> List of teams in current standing order (index 0 is 1st, index 3 is 4th)
-    Example: {"A": ["Mexico", "South Korea", "Czechia", "South Africa"], ...}
     """
     headers = {'X-Auth-Token': API_KEY}
     live_map = {}
@@ -60,7 +59,7 @@ def get_live_standings():
             for group_data in data['standings']:
                 group_raw = group_data.get('group', '')
                 if '_' in group_raw:
-                    group_letter = group_raw.split('_')[1] # Extracts "A", "B", "C"...
+                    group_letter = group_raw.split('_')[1].upper().strip() 
                 else:
                     continue
                 
@@ -79,7 +78,6 @@ def get_live_standings():
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
-# REORDERED: Leaderboard is now the first and default index option
 page = st.sidebar.radio("Navigation", ["Leaderboard", "Make Predictions", "Rules"])
 
 with st.sidebar:
@@ -120,7 +118,6 @@ if page == "Leaderboard":
                     df['Status'] = 'Pending'
 
                 # --- POT CALCULATOR ---
-                # Check for row values exactly matching "Paid" (case-insensitive & stripped)
                 paid_count = df['Status'].astype(str).str.strip().str.lower().eq('paid').sum()
                 total_pot = paid_count * 10
 
@@ -140,7 +137,7 @@ if page == "Leaderboard":
                     total_points = 0
                     
                     for group_name, teams in groups.items():
-                        group_letter = group_name.split(" ")[1] 
+                        group_letter = group_name.split(" ")[1].upper().strip() 
                         
                         current_live_order = live_standings_map.get(group_letter, [])
                         if not current_live_order:
@@ -155,7 +152,19 @@ if page == "Leaderboard":
                         
                         for pick in user_top_3:
                             if pick and pick != "--" and pick != "Pending":
-                                if pick in live_top_3:
+                                match_found = False
+                                for live_team in live_top_3:
+                                    # Normalize name comparison to avoid false substring triggers (e.g., Iran matching France)
+                                    # Splits 'South Korea national football team' into ['south', 'korea', 'national'...]
+                                    live_team_words = [w.replace(',', '').replace('.', '') for w in live_team.lower().split()]
+                                    pick_lower = pick.lower()
+                                    
+                                    # Direct exact match or matching as a whole separate word token inside the API string
+                                    if pick_lower == live_team.lower() or pick_lower in live_team_words or live_team.lower().startswith(pick_lower):
+                                        match_found = True
+                                        break
+                                        
+                                if match_found:
                                     total_points += 1
                                     
                     return total_points
@@ -163,8 +172,6 @@ if page == "Leaderboard":
                 df['Points'] = df.apply(calculate_live_user_score, axis=1)
                 
                 leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
-                
-                # Height variable set to 1200px to expand the layout frame dramatically 
                 st.dataframe(leaderboard_df, use_container_width=True, hide_index=True, height=1200)
             else:
                 st.info("No entries yet.")
