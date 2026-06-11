@@ -27,7 +27,6 @@ groups = {
 }
 
 # --- BULLETPROOF API-TO-LOCAL TEAM MAPPER ---
-# Maps the precise strings returned by the football-data.org API to your local group list values
 TEAM_TRANSLATION = {
     "mexico national football team": "Mexico",
     "south africa national soccer team": "South Africa",
@@ -55,15 +54,12 @@ TEAM_TRANSLATION = {
     "ecuador national football team": "Ecuador",
     "netherlands national football team": "Netherlands",
     "japan national football team": "Japan",
-    "assign men's national soccer team": "Sweden",
     "sweden men's national football team": "Sweden",
     "tunisia national football team": "Tunisia",
     "belgium national football team": "Belgium",
     "egypt national football team": "Egypt",
     "iran national football team": "Iran",
     "new zealand national football team": "New Zealand",
-    "assign national football team": "Spain",
-    "spaniard national football team": "Spain",
     "spain national football team": "Spain",
     "cabo verde national football team": "Cape Verde",
     "cape verde national football team": "Cape Verde",
@@ -87,12 +83,10 @@ TEAM_TRANSLATION = {
     "panama national football team": "Panama"
 }
 
-# Generate flat list of dynamic column headers for safe data mapping
 PREDICTION_COLS = []
 for group_name in groups.keys():
     PREDICTION_COLS.extend([f"{group_name}_1st", f"{group_name}_2nd", f"{group_name}_3rd", f"{group_name}_4th"])
 
-# --- GOOGLE SHEETS CONNECTION ---
 def connect_to_sheet(tab_name="sheet1"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = st.secrets["gcp_service_account"]
@@ -103,13 +97,8 @@ def connect_to_sheet(tab_name="sheet1"):
         return spreadsheet.sheet1
     return spreadsheet.worksheet(tab_name)
 
-# --- API DATA FETCHING (LIVE LIVE STANDINGS MAP) ---
 @st.cache_data(ttl=300) 
 def get_live_standings():
-    """
-    Fetches live standings and constructs a dictionary mapping:
-    Group Letter ("A", "B", etc.) -> List of teams converted to your local short names
-    """
     headers = {'X-Auth-Token': API_KEY}
     live_map = {}
     try:
@@ -126,7 +115,6 @@ def get_live_standings():
                     raw_api_name = row.get('team', {}).get('name')
                     if raw_api_name:
                         norm_name = str(raw_api_name).strip().lower()
-                        # Translate the long API team name into your specific localized short string
                         clean_name = TEAM_TRANSLATION.get(norm_name, str(raw_api_name).strip())
                         translated_team_order.append(clean_name)
                 
@@ -134,14 +122,11 @@ def get_live_standings():
                     continue
 
                 detected_letter = None
-                
-                # 1. Parse standard identifier format (e.g. "GROUP_A")
                 if '_' in group_raw:
                     possible_letter = group_raw.split('_')[1]
                     if possible_letter in [g.split(" ")[1] for g in groups.keys()]:
                         detected_letter = possible_letter
 
-                # 2. Fallback: Identify group context by matching any translated team to your local schema
                 if not detected_letter:
                     for group_name, tracking_teams in groups.items():
                         if any(t in tracking_teams for t in translated_team_order):
@@ -183,7 +168,6 @@ if page == "Leaderboard":
             if records:
                 df = pd.DataFrame(records)
                 
-                # Align Google Sheet columns to structured keys
                 rename_dict = {df.columns[0]: 'Timestamp', df.columns[1]: 'Name'}
                 for idx, col_name in enumerate(PREDICTION_COLS):
                     if idx + 2 < len(df.columns):
@@ -196,11 +180,9 @@ if page == "Leaderboard":
                 if 'Status' not in df.columns:
                     df['Status'] = 'Pending'
 
-                # --- POT CALCULATOR ---
                 paid_count = df['Status'].astype(str).str.strip().str.lower().eq('paid').sum()
                 total_pot = paid_count * 10
 
-                # Top Metrics Section Layout
                 metric_col1, metric_col2 = st.columns([3, 1])
                 with metric_col1:
                     st.write("Real-time points are awarded based on active live standings!")
@@ -222,18 +204,22 @@ if page == "Leaderboard":
                         if not current_live_order:
                             continue
                             
+                        # Extract explicit row selections
                         p1 = str(row.get(f"{group_name}_1st", "")).strip()
                         p2 = str(row.get(f"{group_name}_2nd", "")).strip()
                         p3 = str(row.get(f"{group_name}_3rd", "")).strip()
+                        p4 = str(row.get(f"{group_name}_4th", "")).strip()
                         
-                        user_top_3 = [p1, p2, p3]
-                        live_top_3 = current_live_order[:3] # Returns top 3 cleanly translated names
-                        
-                        # Clean execution check: Look for precise matches now that strings match perfectly
-                        for pick in user_top_3:
-                            if pick and pick != "--" and pick != "Pending":
-                                if pick in live_top_3:
-                                    total_points += 1
+                        # --- STRICT POSITION MATCHING LOGIC ---
+                        # Index 0 is 1st place, Index 1 is 2nd place, etc.
+                        if len(current_live_order) >= 1 and p1 == current_live_order[0]:
+                            total_points += 1
+                        if len(current_live_order) >= 2 and p2 == current_live_order[1]:
+                            total_points += 1
+                        if len(current_live_order) >= 3 and p3 == current_live_order[2]:
+                            total_points += 1
+                        if len(current_live_order) >= 4 and p4 == current_live_order[3]:
+                            total_points += 1
                                     
                     return total_points
 
