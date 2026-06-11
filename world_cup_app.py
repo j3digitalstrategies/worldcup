@@ -26,6 +26,67 @@ groups = {
     "Group L": ["England", "Croatia", "Ghana", "Panama"]
 }
 
+# --- BULLETPROOF API-TO-LOCAL TEAM MAPPER ---
+# Maps the precise strings returned by the football-data.org API to your local group list values
+TEAM_TRANSLATION = {
+    "mexico national football team": "Mexico",
+    "south africa national soccer team": "South Africa",
+    "south korea national football team": "South Korea",
+    "czech republic national football team": "Czechia",
+    "czechia national football team": "Czechia",
+    "canada men's national soccer team": "Canada",
+    "switzerland": "Switzerland",
+    "switzerland national football team": "Switzerland",
+    "qatar national football team": "Qatar",
+    "bosnia and herzegovina national football team": "Bosnia",
+    "brazil national football team": "Brazil",
+    "morocco national football team": "Morocco",
+    "haiti national football team": "Haiti",
+    "scotland national football team": "Scotland",
+    "united states men's national soccer team": "USA",
+    "usa national football team": "USA",
+    "paraguay national football team": "Paraguay",
+    "australia national football team": "Australia",
+    "türkiye national football team": "Türkiye",
+    "turkey national football team": "Türkiye",
+    "germany national football team": "Germany",
+    "curaçao national football team": "Curaçao",
+    "ivory coast national football team": "Ivory Coast",
+    "ecuador national football team": "Ecuador",
+    "netherlands national football team": "Netherlands",
+    "japan national football team": "Japan",
+    "assign men's national soccer team": "Sweden",
+    "sweden men's national football team": "Sweden",
+    "tunisia national football team": "Tunisia",
+    "belgium national football team": "Belgium",
+    "egypt national football team": "Egypt",
+    "iran national football team": "Iran",
+    "new zealand national football team": "New Zealand",
+    "assign national football team": "Spain",
+    "spaniard national football team": "Spain",
+    "spain national football team": "Spain",
+    "cabo verde national football team": "Cape Verde",
+    "cape verde national football team": "Cape Verde",
+    "saudi arabia national football team": "Saudi Arabia",
+    "uruguay national football team": "Uruguay",
+    "france national football team": "France",
+    "senegal national football team": "Senegal",
+    "norway national football team": "Norway",
+    "iraq national football team": "Iraq",
+    "argentina national football team": "Argentina",
+    "algeria national football team": "Algeria",
+    "austria national football team": "Austria",
+    "jordan national football team": "Jordan",
+    "portugal national football team": "Portugal",
+    "uzbekistan national football team": "Uzbekistan",
+    "colombia national football team": "Colombia",
+    "dr congo national football team": "DR Congo",
+    "england national football team": "England",
+    "croatia national football team": "Croatia",
+    "ghana national football team": "Ghana",
+    "panama national football team": "Panama"
+}
+
 # Generate flat list of dynamic column headers for safe data mapping
 PREDICTION_COLS = []
 for group_name in groups.keys():
@@ -47,7 +108,7 @@ def connect_to_sheet(tab_name="sheet1"):
 def get_live_standings():
     """
     Fetches live standings and constructs a dictionary mapping:
-    Group Letter -> List of teams in current standing order (index 0 is 1st, index 3 is 4th)
+    Group Letter ("A", "B", etc.) -> List of teams converted to your local short names
     """
     headers = {'X-Auth-Token': API_KEY}
     live_map = {}
@@ -57,21 +118,39 @@ def get_live_standings():
         
         if 'standings' in data:
             for group_data in data['standings']:
-                group_raw = group_data.get('group', '')
-                if '_' in group_raw:
-                    group_letter = group_raw.split('_')[1].upper().strip() 
-                else:
-                    continue
+                group_raw = str(group_data.get('group', '')).upper().strip()
                 
                 table = group_data.get('table', [])
-                team_order = []
+                translated_team_order = []
                 for row in table:
-                    team_name = row.get('team', {}).get('name')
-                    if team_name:
-                        team_order.append(str(team_name).strip())
+                    raw_api_name = row.get('team', {}).get('name')
+                    if raw_api_name:
+                        norm_name = str(raw_api_name).strip().lower()
+                        # Translate the long API team name into your specific localized short string
+                        clean_name = TEAM_TRANSLATION.get(norm_name, str(raw_api_name).strip())
+                        translated_team_order.append(clean_name)
                 
-                if team_order:
-                    live_map[group_letter] = team_order
+                if not translated_team_order:
+                    continue
+
+                detected_letter = None
+                
+                # 1. Parse standard identifier format (e.g. "GROUP_A")
+                if '_' in group_raw:
+                    possible_letter = group_raw.split('_')[1]
+                    if possible_letter in [g.split(" ")[1] for g in groups.keys()]:
+                        detected_letter = possible_letter
+
+                # 2. Fallback: Identify group context by matching any translated team to your local schema
+                if not detected_letter:
+                    for group_name, tracking_teams in groups.items():
+                        if any(t in tracking_teams for t in translated_team_order):
+                            detected_letter = group_name.split(" ")[1]
+                            break
+                
+                if detected_letter:
+                    live_map[detected_letter] = translated_team_order
+                    
         return live_map
     except Exception as e:
         return {}
@@ -148,23 +227,12 @@ if page == "Leaderboard":
                         p3 = str(row.get(f"{group_name}_3rd", "")).strip()
                         
                         user_top_3 = [p1, p2, p3]
-                        live_top_3 = current_live_order[:3]
+                        live_top_3 = current_live_order[:3] # Returns top 3 cleanly translated names
                         
+                        # Clean execution check: Look for precise matches now that strings match perfectly
                         for pick in user_top_3:
                             if pick and pick != "--" and pick != "Pending":
-                                match_found = False
-                                for live_team in live_top_3:
-                                    # Normalize name comparison to avoid false substring triggers (e.g., Iran matching France)
-                                    # Splits 'South Korea national football team' into ['south', 'korea', 'national'...]
-                                    live_team_words = [w.replace(',', '').replace('.', '') for w in live_team.lower().split()]
-                                    pick_lower = pick.lower()
-                                    
-                                    # Direct exact match or matching as a whole separate word token inside the API string
-                                    if pick_lower == live_team.lower() or pick_lower in live_team_words or live_team.lower().startswith(pick_lower):
-                                        match_found = True
-                                        break
-                                        
-                                if match_found:
+                                if pick in live_top_3:
                                     total_points += 1
                                     
                     return total_points
