@@ -26,6 +26,11 @@ groups = {
     "Group L": ["England", "Croatia", "Ghana", "Panama"]
 }
 
+# Generate flat list of dynamic column headers for safe data mapping
+PREDICTION_COLS = []
+for group_name in groups.keys():
+    PREDICTION_COLS.extend([f"{group_name}_1st", f"{group_name}_2nd", f"{group_name}_3rd", f"{group_name}_4th"])
+
 # --- GOOGLE SHEETS CONNECTION ---
 def connect_to_sheet(tab_name="sheet1"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -37,38 +42,51 @@ def connect_to_sheet(tab_name="sheet1"):
         return spreadsheet.sheet1
     return spreadsheet.worksheet(tab_name)
 
-# --- API DATA FETCHING ---
-@st.cache_data(ttl=3600) 
-def get_official_advancers():
+# --- API DATA FETCHING (LIVE LIVE STANDINGS MAP) ---
+@st.cache_data(ttl=300) 
+def get_live_standings():
+    """
+    Fetches live standings and constructs a dictionary mapping:
+    Group Letter -> List of teams in current standing order (index 0 is 1st, index 3 is 4th)
+    Example: {"A": ["Mexico", "South Korea", "Czechia", "South Africa"], ...}
+    """
     headers = {'X-Auth-Token': API_KEY}
+    live_map = {}
     try:
         response = requests.get(f"{BASE_URL}?season=2026", headers=headers)
         data = response.json()
-        advancers = []
-        thirds = []
+        
         if 'standings' in data:
-            for group in data['standings']:
-                table = group['table']
-                if len(table) >= 2:
-                    advancers.extend([table[0]['team']['name'], table[1]['team']['name']])
-                if len(table) >= 3:
-                    thirds.append({'name': table[2]['team']['name'], 'pts': table[2]['points'], 'gd': table[2]['goalDifference']})
-            thirds.sort(key=lambda x: (x['pts'], x['gd']), reverse=True)
-            advancers.extend([t['name'] for t in thirds[:8]])
-        return advancers
-    except:
-        return []
+            for group_data in data['standings']:
+                group_raw = group_data.get('group', '')
+                if '_' in group_raw:
+                    group_letter = group_raw.split('_')[1] # Extracts "A", "B", "C"...
+                else:
+                    continue
+                
+                table = group_data.get('table', [])
+                team_order = []
+                for row in table:
+                    team_name = row.get('team', {}).get('name')
+                    if team_name:
+                        team_order.append(str(team_name).strip())
+                
+                if team_order:
+                    live_map[group_letter] = team_order
+        return live_map
+    except Exception as e:
+        return {}
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
-page = st.sidebar.radio("Navigation", ["Make Predictions", "Leaderboard", "Rules"])
+# REORDERED: Leaderboard is now the first and default index option
+page = st.sidebar.radio("Navigation", ["Leaderboard", "Make Predictions", "Rules"])
 
 with st.sidebar:
     st.header("Player Info")
     user_name = st.text_input("Full Name:")
     
     st.divider()
-    # QR Code and Instagram Info
     st.markdown("### 📸 Official Instagram")
     st.write("Make sure you follow the official instagram **@2026fifawcp** for updates and general banter.")
     try:
@@ -76,10 +94,87 @@ with st.sidebar:
     except:
         st.caption("(QR Code image file missing in repository)")
 
-# --- PAGE 1: PREDICTIONS ---
-if page == "Make Predictions":
+# --- PAGE 1: LEADERBOARD ---
+if page == "Leaderboard":
+    st.title("📊 Live Automated Leaderboard")
+    with st.spinner("Calculating live scores from current match data..."):
+        live_standings_map = get_live_standings()
+        
+        try:
+            sheet = connect_to_sheet()
+            records = sheet.get_all_records()
+            if records:
+                df = pd.DataFrame(records)
+                
+                # Align Google Sheet columns to structured keys
+                rename_dict = {df.columns[0]: 'Timestamp', df.columns[1]: 'Name'}
+                for idx, col_name in enumerate(PREDICTION_COLS):
+                    if idx + 2 < len(df.columns):
+                        rename_dict[df.columns[idx + 2]] = col_name
+                if len(df.columns) > len(PREDICTION_COLS) + 2:
+                    rename_dict[df.columns[-1]] = 'Status'
+                
+                df = df.rename(columns=rename_dict)
+
+                if 'Status' not in df.columns:
+                    df['Status'] = 'Pending'
+
+                # --- POT CALCULATOR ---
+                # Check for row values exactly matching "Paid" (case-insensitive & stripped)
+                paid_count = df['Status'].astype(str).str.strip().str.lower().eq('paid').sum()
+                total_pot = paid_count * 10
+
+                # Top Metrics Section Layout
+                metric_col1, metric_col2 = st.columns([3, 1])
+                with metric_col1:
+                    st.write("Real-time points are awarded based on active live standings!")
+                with metric_col2:
+                    st.metric(label="💰 Total Pool Pot", value=f"${total_pot} USD")
+                
+                st.divider()
+
+                def calculate_live_user_score(row):
+                    if not live_standings_map:
+                        return 0
+                        
+                    total_points = 0
+                    
+                    for group_name, teams in groups.items():
+                        group_letter = group_name.split(" ")[1] 
+                        
+                        current_live_order = live_standings_map.get(group_letter, [])
+                        if not current_live_order:
+                            continue
+                            
+                        p1 = str(row.get(f"{group_name}_1st", "")).strip()
+                        p2 = str(row.get(f"{group_name}_2nd", "")).strip()
+                        p3 = str(row.get(f"{group_name}_3rd", "")).strip()
+                        
+                        user_top_3 = [p1, p2, p3]
+                        live_top_3 = current_live_order[:3]
+                        
+                        for pick in user_top_3:
+                            if pick and pick != "--" and pick != "Pending":
+                                if pick in live_top_3:
+                                    total_points += 1
+                                    
+                    return total_points
+
+                df['Points'] = df.apply(calculate_live_user_score, axis=1)
+                
+                leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
+                
+                # Height variable set to 1200px to expand the layout frame dramatically 
+                st.dataframe(leaderboard_df, use_container_width=True, hide_index=True, height=1200)
+            else:
+                st.info("No entries yet.")
+        except Exception as e:
+            st.error(f"Leaderboard Error: {e}")
+
+# --- PAGE 2: PREDICTIONS ---
+elif page == "Make Predictions":
     st.title("🏆 2026 World Cup Predictions")
-    st.info("Rank teams 1-4. Your top 3 picks are used for scoring.")
+    st.info("Rank teams 1-4. Real-time points are awarded based on active live standings!")
     
     all_picks = []
     summary_data = [] 
@@ -117,44 +212,7 @@ if page == "Make Predictions":
             except Exception as e:
                 st.error(f"Error saving to Google Sheets: {e}")
 
-# --- PAGE 2: LEADERBOARD ---
-elif page == "Leaderboard":
-    st.title("📊 Live Automated Leaderboard")
-    with st.spinner("Calculating live scores..."):
-        official_list = get_official_advancers()
-        try:
-            sheet = connect_to_sheet()
-            records = sheet.get_all_records()
-            if records:
-                df = pd.DataFrame(records)
-                
-                def calculate_user_score(row):
-                    tournament_start = datetime(2026, 6, 11)
-                    if datetime.now() < tournament_start:
-                        return 0
-                        
-                    total = 0
-                    vals = list(row.values)
-                    for g in range(12):
-                        start_idx = 2 + (g * 4)
-                        for offset in range(3):
-                            if (start_idx + offset) < len(vals):
-                                pick = str(vals[start_idx + offset])
-                                if pick in official_list:
-                                    total += 1
-                    return total
-
-                df['Points'] = df.apply(calculate_user_score, axis=1)
-                if 'Status' not in df.columns:
-                    df['Status'] = 'Pending'
-                leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
-                st.dataframe(leaderboard_df, use_container_width=True, hide_index=True)
-            else:
-                st.info("No entries yet.")
-        except Exception as e:
-            st.error(f"Leaderboard Error: {e}")
-
-# --- PAGE 3: RULES & FORUM ---
+# --- PAGE 3: RULES ---
 elif page == "Rules":
     st.title("📜 Pool Rules & Payment")
     
