@@ -27,7 +27,6 @@ groups = {
 }
 
 # --- MANUAL LIVE STANDINGS OVERRIDE (HARD FAIL-SAFE) ---
-# This serves as a secondary database if your API limit runs out or doesn't fetch fields.
 MANUAL_LIVE_STANDINGS = {
     "Group A": ["Mexico", "South Korea", "South Africa", "Czechia"],
     "Group B": ["Switzerland", "Canada", "Bosnia", "Qatar"],
@@ -44,115 +43,25 @@ MANUAL_LIVE_STANDINGS = {
 }
 
 # --- UNIVERSAL CLEANER MAP ---
-# Keys are transformed completely into squashed lowercase strings to remove spaces and punctuation mismatches.
 CLEAN_TEAM_MAP = {
-    "mexico": "Mexico",
-    "mexiconationalfootballteam": "Mexico",
-    "southafrica": "South Africa",
-    "southafricanationalsoccerteam": "South Africa",
-    "southkorea": "South Korea",
-    "southkoreanationalfootballteam": "South Korea",
-    "korearepublic": "South Korea",
-    "czechia": "Czechia",
-    "czechrepublic": "Czechia",
-    "czechrepublicnationalfootballteam": "Czechia",
-    "canada": "Canada",
-    "canadamen'snationalsoccerteam": "Canada",
-    "canadamensnationalsoccerteam": "Canada",
-    "switzerland": "Switzerland",
-    "switzerlandnationalfootballteam": "Switzerland",
-    "qatar": "Qatar",
-    "qatarnationalfootballteam": "Qatar",
-    "bosnia": "Bosnia",
-    "bosniaandherzegovina": "Bosnia",
-    "bosniaherzegovina": "Bosnia",
-    "brazil": "Brazil",
-    "brazilnationalfootballteam": "Brazil",
-    "morocco": "Morocco",
-    "morocconationalfootballteam": "Morocco",
-    "haiti": "Haiti",
-    "haitinationalfootballteam": "Haiti",
-    "scotland": "Scotland",
-    "scotlandnationalfootballteam": "Scotland",
-    "usa": "USA",
-    "unitedstates": "USA",
-    "unitedstatesmensnationalsoccerteam": "USA",
-    "paraguay": "Paraguay",
-    "paraguaynationalfootballteam": "Paraguay",
-    "australia": "Australia",
-    "australianationalfootballteam": "Australia",
-    "türkiye": "Türkiye",
-    "turkey": "Türkiye",
-    "turkeynationalfootballteam": "Türkiye",
-    "germany": "Germany",
-    "germanynationalfootballteam": "Germany",
-    "curaçao": "Curaçao",
-    "curacao": "Curaçao",
-    "curaçaonationalfootballteam": "Curaçao",
-    "ivorycoast": "Ivory Coast",
-    "ivorycoastnationalfootballteam": "Ivory Coast",
-    "côted'ivoire": "Ivory Coast",
-    "cote d'ivoire": "Ivory Coast",
-    "ecuador": "Ecuador",
-    "ecuadornationalfootballteam": "Ecuador",
-    "netherlands": "Netherlands",
-    "netherlandsnationalfootballteam": "Netherlands",
-    "japan": "Japan",
-    "japannationalfootballteam": "Japan",
-    "sweden": "Sweden",
-    "swedenmen'snationalfootballteam": "Sweden",
-    "tunisia": "Tunisia",
-    "tunisianationalfootballteam": "Tunisia",
-    "belgium": "Belgium",
-    "belgiumnationalfootballteam": "Belgium",
-    "egypt": "Egypt",
-    "egyptnationalfootballteam": "Egypt",
-    "iran": "Iran",
-    "irannationalfootballteam": "Iran",
-    "newzealand": "New Zealand",
-    "newzealandnationalfootballteam": "New Zealand",
-    "spain": "Spain",
-    "spainnationalfootballteam": "Spain",
-    "capeverde": "Cape Verde",
-    "caboverde": "Cape Verde",
-    "capeverdenationalfootballteam": "Cape Verde",
-    "saudiarabia": "Saudi Arabia",
-    "saudiarabianationalfootballteam": "Saudi Arabia",
-    "uruguay": "Uruguay",
-    "uruguaynationalfootballteam": "Uruguay",
-    "france": "France",
-    "francenationalfootballteam": "France",
-    "senegal": "Senegal",
-    "senegalnationalfootballteam": "Senegal",
-    "norway": "Norway",
-    "norwaynationalfootballteam": "Norway",
-    "iraq": "Iraq",
-    "iraqnationalfootballteam": "Iraq",
-    "argentina": "Argentina",
-    "argentinanationalfootballteam": "Argentina",
-    "algeria": "Algeria",
-    "algerianationalfootballteam": "Algeria",
-    "austria": "Austria",
-    "austrianationalfootballteam": "Austria",
-    "jordan": "Jordan",
-    "jordannationalfootballteam": "Jordan",
-    "portugal": "Portugal",
-    "portugalnationalfootballteam": "Portugal",
-    "uzbekistan": "Uzbekistan",
-    "uzbekistannationalfootballteam": "Uzbekistan",
-    "colombia": "Colombia",
-    "colombianationalfootballteam": "Colombia",
-    "drcongo": "DR Congo",
-    "congodr": "DR Congo",
-    "drcongonationalfootballteam": "DR Congo",
-    "england": "England",
-    "englandnationalfootballteam": "England",
-    "croatia": "Croatia",
-    "croatianationalfootballteam": "Croatia",
-    "ghana": "Ghana",
-    "ghananationalfootballteam": "Ghana",
-    "panama": "Panama",
-    "panamanationalfootballteam": "Panama"
+    "mexico": "Mexico", "southafrica": "South Africa", "southkorea": "South Korea",
+    "korearepublic": "South Korea", "czechia": "Czechia", "czechrepublic": "Czechia",
+    "canada": "Canada", "switzerland": "Switzerland", "qatar": "Qatar",
+    "bosnia": "Bosnia", "bosniaandherzegovina": "Bosnia", "bosniaherzegovina": "Bosnia",
+    "bosniah": "Bosnia", "brazil": "Brazil", "morocco": "Morocco", "haiti": "Haiti",
+    "scotland": "Scotland", "usa": "USA", "unitedstates": "USA", "paraguay": "Paraguay",
+    "australia": "Australia", "türkiye": "Türkiye", "turkey": "Türkiye",
+    "germany": "Germany", "curaçao": "Curaçao", "curacao": "Curaçao",
+    "ivorycoast": "Ivory Coast", "côted'ivoire": "Ivory Coast", "cotedivoire": "Ivory Coast",
+    "ecuador": "Ecuador", "netherlands": "Netherlands", "japan": "Japan",
+    "sweden": "Sweden", "tunisia": "Tunisia", "belgium": "Belgium", "egypt": "Egypt",
+    "iran": "Iran", "newzealand": "New Zealand", "spain": "Spain", "capeverde": "Cape Verde",
+    "caboverde": "Cape Verde", "saudiarabia": "Saudi Arabia", "uruguay": "Uruguay",
+    "france": "France", "senegal": "Senegal", "norway": "Norway", "iraq": "Iraq",
+    "argentina": "Argentina", "algeria": "Algeria", "austria": "Austria",
+    "jordan": "Jordan", "portugal": "Portugal", "uzbekistan": "Uzbekistan",
+    "colombia": "Colombia", "drcongo": "DR Congo", "congodr": "DR Congo",
+    "england": "England", "croatia": "Croatia", "ghana": "Ghana", "panama": "Panama"
 }
 
 def standardize_string(val):
@@ -177,51 +86,42 @@ def connect_to_sheet(tab_name="sheet1"):
 @st.cache_data(ttl=300) 
 def get_live_standings():
     headers = {'X-Auth-Token': API_KEY}
-    live_map = {}
+    all_teams_ordered = []
+    
     try:
         response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=10)
         data = response.json()
         
-        if 'standings' in data and len(data['standings']) > 0:
+        if 'standings' in data:
+            # Gather EVERY team in the order the API lists them, across all standings blocks
             for group_data in data['standings']:
-                group_raw = str(group_data.get('group', '')).upper().strip()
                 table = group_data.get('table', [])
-                
-                translated_team_order = []
                 for row in table:
                     team_node = row.get('team', {})
-                    # Try shortName first, fall back to name string
                     raw_api_name = team_node.get('shortName') or team_node.get('name')
-                    
                     if raw_api_name:
                         lookup_key = standardize_string(raw_api_name)
                         clean_name = CLEAN_TEAM_MAP.get(lookup_key, str(raw_api_name).strip())
-                        translated_team_order.append(clean_name)
-                
-                if not translated_team_order:
-                    continue
-
-                detected_letter = None
-                if '_' in group_raw:
-                    possible_letter = group_raw.split('_')[-1]
-                    if possible_letter in [g.split(" ")[1] for g in groups.keys()]:
-                        detected_letter = possible_letter
-
-                if not detected_letter:
-                    for group_name, tracking_teams in groups.items():
-                        std_tracking = [standardize_string(t) for t in tracking_teams]
-                        if any(standardize_string(t) in std_tracking for t in translated_team_order):
-                            detected_letter = group_name.split(" ")[1]
-                            break
-                
-                if detected_letter:
-                    live_map[f"Group {detected_letter.upper()}"] = translated_team_order
+                        if clean_name not in all_teams_ordered:
+                            all_teams_ordered.append(clean_name)
         
-        # Fallback loop integration if structure elements match empty arrays
-        if not live_map:
+        if not all_teams_ordered:
             return MANUAL_LIVE_STANDINGS, True
+
+        # Reconstruct the true 12 separate groups based on their ranking sequence in the master API list
+        structured_live_map = {}
+        for group_name, tracking_teams in groups.items():
+            # Find which of this group's teams are in the master list, preserving their relative API order
+            group_teams_in_api_order = [team for team in all_teams_ordered if team in tracking_teams]
             
-        return live_map, False
+            # If any teams are missing from active tracking, append them to the bottom safely
+            for team in tracking_teams:
+                if team not in group_teams_in_api_order:
+                    group_teams_in_api_order.append(team)
+                    
+            structured_live_map[group_name] = group_teams_in_api_order
+            
+        return structured_live_map, False
     except Exception as e:
         return MANUAL_LIVE_STANDINGS, True
 
@@ -232,7 +132,6 @@ page = st.sidebar.radio("Navigation", ["Leaderboard", "Make Predictions", "Rules
 with st.sidebar:
     st.header("Player Info")
     user_name = st.text_input("Full Name:")
-    
     st.divider()
     st.markdown("### 📸 Official Instagram")
     st.write("Make sure you follow the official instagram **@2026fifawcp** for updates and general banter.")
@@ -244,7 +143,7 @@ with st.sidebar:
 # --- PAGE 1: LEADERBOARD ---
 if page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
-    with st.spinner("Calculating live scores from current match data..."):
+    with st.spinner("Calculating live scores..."):
         live_standings_map, is_fallback = get_live_standings()
         
         try:
@@ -261,7 +160,6 @@ if page == "Leaderboard":
                     rename_dict[df.columns[-1]] = 'Status'
                 
                 df = df.rename(columns=rename_dict)
-
                 if 'Status' not in df.columns:
                     df['Status'] = 'Pending'
 
@@ -271,9 +169,9 @@ if page == "Leaderboard":
                 metric_col1, metric_col2 = st.columns([3, 1])
                 with metric_col1:
                     if is_fallback:
-                        st.info("💡 Running on Local Standing Matrix data. Predictions are mapped accurately.")
+                        st.info("💡 Running on Local Standing Matrix fallback data.")
                     else:
-                        st.success("✅ Connected to Real-time API Standing Data feed.")
+                        st.success("✅ Connected and parsing Flat API Master Standings Feed.")
                 with metric_col2:
                     st.metric(label="💰 Total Pool Pot", value=f"${total_pot} USD")
                 
@@ -282,7 +180,6 @@ if page == "Leaderboard":
                 def calculate_live_user_score(row):
                     if not live_standings_map:
                         return 0
-                        
                     total_points = 0
                     
                     for group_name, teams in groups.items():
@@ -309,13 +206,11 @@ if page == "Leaderboard":
                     return total_points
 
                 df['Points'] = df.apply(calculate_live_user_score, axis=1)
-                
                 leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
                 st.dataframe(leaderboard_df, use_container_width=True, hide_index=True, height=1200)
                 
-                # Dynamic diagnostics drawer to visually cross check alignment details
-                with st.expander("🛠️ Diagnostics View (Verify Data Alignment Here)"):
-                    st.write("This table shows the standings sequence currently tracked by the execution loop:")
+                with st.expander("🛠️ Diagnostics View (Verify Decoded Sub-Groups)"):
+                    st.write("Parsed and isolated groups processed from the flat API list:")
                     st.json(live_standings_map)
             else:
                 st.info("No entries yet.")
@@ -366,7 +261,6 @@ elif page == "Make Predictions":
 # --- PAGE 3: RULES & CHAT FORUM ---
 elif page == "Rules & Chat Forum":
     st.title("📜 Pool Rules & Payment")
-    
     with st.expander("View Full Rules & Payment Details", expanded=True):
         st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
         st.write("**Scoring System:** Each correct position pick = 1 point.")
@@ -375,12 +269,10 @@ elif page == "Rules & Chat Forum":
         st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
 
     st.divider()
-
     st.header("💬 Chat Forum")
     with st.form("chat_form", clear_on_submit=True):
         comment = st.text_area("Share a question or talk some trash:")
         submitted = st.form_submit_button("Post Message")
-        
         if submitted:
             if not user_name:
                 st.error("Please enter your name in the sidebar before posting.")
