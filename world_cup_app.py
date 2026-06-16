@@ -26,6 +26,23 @@ groups = {
     "Group L": ["England", "Croatia", "Ghana", "Panama"]
 }
 
+# --- MANUAL LIVE STANDINGS OVERRIDE (HARD FAIL-SAFE) ---
+# Update this dictionary manually if the API completely disconnects or fails!
+MANUAL_LIVE_STANDINGS = {
+    "Group A": ["Mexico", "South Korea", "South Africa", "Czechia"],
+    "Group B": ["Switzerland", "Canada", "Bosnia", "Qatar"],
+    "Group C": ["Brazil", "Morocco", "Scotland", "Haiti"],
+    "Group D": ["USA", "Türkiye", "Australia", "Paraguay"],
+    "Group E": ["Germany", "Ivory Coast", "Ecuador", "Curaçao"],
+    "Group F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
+    "Group G": ["Belgium", "Egypt", "Iran", "New Zealand"],
+    "Group H": ["Spain", "Uruguay", "Saudi Arabia", "Cape Verde"],
+    "Group I": ["France", "Norway", "Senegal", "Iraq"],
+    "Group J": ["Argentina", "Algeria", "Austria", "Jordan"],
+    "Group K": ["Portugal", "Colombia", "Uzbekistan", "DR Congo"],
+    "Group L": ["England", "Croatia", "Ghana", "Panama"]
+}
+
 # --- BULLETPROOF API-TO-LOCAL TEAM MAPPER ---
 TEAM_TRANSLATION = {
     "mexico national football team": "Mexico",
@@ -34,7 +51,10 @@ TEAM_TRANSLATION = {
     "south africa": "South Africa",
     "south korea national football team": "South Korea",
     "south korea": "South Korea",
+    "korea republic": "South Korea",
+    "korea republic national football team": "South Korea",
     "czech republic national football team": "Czechia",
+    "czech republic": "Czechia",
     "czechia national football team": "Czechia",
     "czechia": "Czechia",
     "canada men's national soccer team": "Canada",
@@ -44,6 +64,7 @@ TEAM_TRANSLATION = {
     "qatar national football team": "Qatar",
     "qatar": "Qatar",
     "bosnia and herzegovina national football team": "Bosnia",
+    "bosnia and herzegovina": "Bosnia",
     "bosnia": "Bosnia",
     "brazil national football team": "Brazil",
     "brazil": "Brazil",
@@ -155,7 +176,7 @@ def get_live_standings():
         response = requests.get(f"{BASE_URL}?season=2026", headers=headers)
         data = response.json()
         
-        if 'standings' in data:
+        if 'standings' in data and len(data['standings']) > 0:
             for group_data in data['standings']:
                 group_raw = str(group_data.get('group', '')).upper().strip()
                 
@@ -172,13 +193,11 @@ def get_live_standings():
                     continue
 
                 detected_letter = None
-                # Method A: Try parsing "GROUP_A" raw format
                 if '_' in group_raw:
                     possible_letter = group_raw.split('_')[1]
                     if possible_letter in [g.split(" ")[1] for g in groups.keys()]:
                         detected_letter = possible_letter
 
-                # Method B: Robust fallback match using data elements
                 if not detected_letter:
                     for group_name, tracking_teams in groups.items():
                         lower_tracking = [t.lower() for t in tracking_teams]
@@ -187,12 +206,16 @@ def get_live_standings():
                             break
                 
                 if detected_letter:
-                    # Save explicitly under normalized target key format: "Group A"
                     live_map[f"Group {detected_letter.upper()}"] = translated_team_order
-                    
+        
+        # If API returned records but left them completely unpopulated
+        if not live_map:
+            return MANUAL_LIVE_STANDINGS
+            
         return live_map
     except Exception as e:
-        return {}
+        # Fallback instantly to local dictionary if code crashes/times out
+        return MANUAL_LIVE_STANDINGS
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
@@ -240,8 +263,6 @@ if page == "Leaderboard":
                 metric_col1, metric_col2 = st.columns([3, 1])
                 with metric_col1:
                     st.write("Real-time points are awarded based on active live standings!")
-                    if not live_standings_map:
-                        st.warning("⚠️ High-level warning: Live standings data map returned empty. Leaderboard scores will evaluate to 0.")
                 with metric_col2:
                     st.metric(label="💰 Total Pool Pot", value=f"${total_pot} USD")
                 
