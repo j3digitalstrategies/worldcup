@@ -29,58 +29,108 @@ groups = {
 # --- BULLETPROOF API-TO-LOCAL TEAM MAPPER ---
 TEAM_TRANSLATION = {
     "mexico national football team": "Mexico",
+    "mexico": "Mexico",
     "south africa national soccer team": "South Africa",
+    "south africa": "South Africa",
     "south korea national football team": "South Korea",
+    "south korea": "South Korea",
     "czech republic national football team": "Czechia",
     "czechia national football team": "Czechia",
+    "czechia": "Czechia",
     "canada men's national soccer team": "Canada",
+    "canada": "Canada",
     "switzerland": "Switzerland",
     "switzerland national football team": "Switzerland",
     "qatar national football team": "Qatar",
+    "qatar": "Qatar",
     "bosnia and herzegovina national football team": "Bosnia",
+    "bosnia": "Bosnia",
     "brazil national football team": "Brazil",
+    "brazil": "Brazil",
     "morocco national football team": "Morocco",
+    "morocco": "Morocco",
     "haiti national football team": "Haiti",
+    "haiti": "Haiti",
     "scotland national football team": "Scotland",
+    "scotland": "Scotland",
     "united states men's national soccer team": "USA",
     "usa national football team": "USA",
+    "usa": "USA",
+    "united states": "USA",
     "paraguay national football team": "Paraguay",
+    "paraguay": "Paraguay",
     "australia national football team": "Australia",
+    "australia": "Australia",
     "türkiye national football team": "Türkiye",
     "turkey national football team": "Türkiye",
+    "türkiye": "Türkiye",
+    "turkey": "Türkiye",
     "germany national football team": "Germany",
+    "germany": "Germany",
     "curaçao national football team": "Curaçao",
+    "curaçao": "Curaçao",
+    "curacao": "Curaçao",
     "ivory coast national football team": "Ivory Coast",
+    "ivory coast": "Ivory Coast",
     "ecuador national football team": "Ecuador",
+    "ecuador": "Ecuador",
     "netherlands national football team": "Netherlands",
+    "netherlands": "Netherlands",
     "japan national football team": "Japan",
+    "japan": "Japan",
     "sweden men's national football team": "Sweden",
+    "sweden": "Sweden",
     "tunisia national football team": "Tunisia",
+    "tunisia": "Tunisia",
     "belgium national football team": "Belgium",
+    "belgium": "Belgium",
     "egypt national football team": "Egypt",
+    "egypt": "Egypt",
     "iran national football team": "Iran",
+    "iran": "Iran",
     "new zealand national football team": "New Zealand",
+    "new zealand": "New Zealand",
     "spain national football team": "Spain",
+    "spain": "Spain",
     "cabo verde national football team": "Cape Verde",
     "cape verde national football team": "Cape Verde",
+    "cape verde": "Cape Verde",
     "saudi arabia national football team": "Saudi Arabia",
+    "saudi arabia": "Saudi Arabia",
     "uruguay national football team": "Uruguay",
+    "uruguay": "Uruguay",
     "france national football team": "France",
+    "france": "France",
     "senegal national football team": "Senegal",
+    "senegal": "Senegal",
     "norway national football team": "Norway",
+    "norway": "Norway",
     "iraq national football team": "Iraq",
+    "iraq": "Iraq",
     "argentina national football team": "Argentina",
+    "argentina": "Argentina",
     "algeria national football team": "Algeria",
+    "algeria": "Algeria",
     "austria national football team": "Austria",
+    "austria": "Austria",
     "jordan national football team": "Jordan",
+    "jordan": "Jordan",
     "portugal national football team": "Portugal",
+    "portugal": "Portugal",
     "uzbekistan national football team": "Uzbekistan",
+    "uzbekistan": "Uzbekistan",
     "colombia national football team": "Colombia",
+    "colombia": "Colombia",
     "dr congo national football team": "DR Congo",
+    "dr congo": "DR Congo",
     "england national football team": "England",
+    "england": "England",
     "croatia national football team": "Croatia",
+    "croatia": "Croatia",
     "ghana national football team": "Ghana",
-    "panama national football team": "Panama"
+    "ghana": "Ghana",
+    "panama national football team": "Panama",
+    "panama": "Panama"
 }
 
 PREDICTION_COLS = []
@@ -122,19 +172,23 @@ def get_live_standings():
                     continue
 
                 detected_letter = None
+                # Method A: Try parsing "GROUP_A" raw format
                 if '_' in group_raw:
                     possible_letter = group_raw.split('_')[1]
                     if possible_letter in [g.split(" ")[1] for g in groups.keys()]:
                         detected_letter = possible_letter
 
+                # Method B: Robust fallback match using data elements
                 if not detected_letter:
                     for group_name, tracking_teams in groups.items():
-                        if any(t in tracking_teams for t in translated_team_order):
+                        lower_tracking = [t.lower() for t in tracking_teams]
+                        if any(t.lower() in lower_tracking for t in translated_team_order):
                             detected_letter = group_name.split(" ")[1]
                             break
                 
                 if detected_letter:
-                    live_map[detected_letter] = translated_team_order
+                    # Save explicitly under normalized target key format: "Group A"
+                    live_map[f"Group {detected_letter.upper()}"] = translated_team_order
                     
         return live_map
     except Exception as e:
@@ -142,7 +196,6 @@ def get_live_standings():
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
-# Renamed navigation item here
 page = st.sidebar.radio("Navigation", ["Leaderboard", "Make Predictions", "Rules & Chat Forum"])
 
 with st.sidebar:
@@ -187,6 +240,8 @@ if page == "Leaderboard":
                 metric_col1, metric_col2 = st.columns([3, 1])
                 with metric_col1:
                     st.write("Real-time points are awarded based on active live standings!")
+                    if not live_standings_map:
+                        st.warning("⚠️ High-level warning: Live standings data map returned empty. Leaderboard scores will evaluate to 0.")
                 with metric_col2:
                     st.metric(label="💰 Total Pool Pot", value=f"${total_pot} USD")
                 
@@ -199,24 +254,24 @@ if page == "Leaderboard":
                     total_points = 0
                     
                     for group_name, teams in groups.items():
-                        group_letter = group_name.split(" ")[1].upper().strip() 
-                        
-                        current_live_order = live_standings_map.get(group_letter, [])
+                        current_live_order = live_standings_map.get(group_name, [])
                         if not current_live_order:
                             continue
                             
-                        p1 = str(row.get(f"{group_name}_1st", "")).strip()
-                        p2 = str(row.get(f"{group_name}_2nd", "")).strip()
-                        p3 = str(row.get(f"{group_name}_3rd", "")).strip()
-                        p4 = str(row.get(f"{group_name}_4th", "")).strip()
+                        p1 = str(row.get(f"{group_name}_1st", "")).strip().lower()
+                        p2 = str(row.get(f"{group_name}_2nd", "")).strip().lower()
+                        p3 = str(row.get(f"{group_name}_3rd", "")).strip().lower()
+                        p4 = str(row.get(f"{group_name}_4th", "")).strip().lower()
                         
-                        if len(current_live_order) >= 1 and p1 == current_live_order[0]:
+                        live_lowered = [str(team).strip().lower() for team in current_live_order]
+                        
+                        if len(live_lowered) >= 1 and p1 == live_lowered[0]:
                             total_points += 1
-                        if len(current_live_order) >= 2 and p2 == current_live_order[1]:
+                        if len(live_lowered) >= 2 and p2 == live_lowered[1]:
                             total_points += 1
-                        if len(current_live_order) >= 3 and p3 == current_live_order[2]:
+                        if len(live_lowered) >= 3 and p3 == live_lowered[2]:
                             total_points += 1
-                        if len(current_live_order) >= 4 and p4 == current_live_order[3]:
+                        if len(live_lowered) >= 4 and p4 == live_lowered[3]:
                             total_points += 1
                                     
                     return total_points
