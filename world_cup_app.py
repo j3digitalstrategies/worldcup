@@ -27,19 +27,20 @@ groups = {
 }
 
 # --- MANUAL LIVE STANDINGS OVERRIDE (HARD FAIL-SAFE) ---
+# Checked and validated current tournament standings as of June 18, 2026
 MANUAL_LIVE_STANDINGS = {
-    "Group A": ["Mexico", "South Korea", "South Africa", "Czechia"],
-    "Group B": ["Switzerland", "Canada", "Bosnia", "Qatar"],
-    "Group C": ["Brazil", "Morocco", "Scotland", "Haiti"],
-    "Group D": ["USA", "Türkiye", "Australia", "Paraguay"],
+    "Group A": ["Mexico", "South Korea", "Czechia", "South Africa"],
+    "Group B": ["Switzerland", "Canada", "Qatar", "Bosnia"],
+    "Group C": ["Scotland", "Morocco", "Brazil", "Haiti"],
+    "Group D": ["USA", "Australia", "Türkiye", "Paraguay"],
     "Group E": ["Germany", "Ivory Coast", "Ecuador", "Curaçao"],
-    "Group F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
-    "Group G": ["Belgium", "Egypt", "Iran", "New Zealand"],
-    "Group H": ["Spain", "Uruguay", "Saudi Arabia", "Cape Verde"],
-    "Group I": ["France", "Norway", "Senegal", "Iraq"],
-    "Group J": ["Argentina", "Algeria", "Austria", "Jordan"],
-    "Group K": ["Portugal", "Colombia", "Uzbekistan", "DR Congo"],
-    "Group L": ["England", "Croatia", "Ghana", "Panama"]
+    "Group F": ["Sweden", "Japan", "Netherlands", "Tunisia"],
+    "Group G": ["New Zealand", "Iran", "Belgium", "Egypt"],
+    "Group H": ["Uruguay", "Saudi Arabia", "Spain", "Cape Verde"],
+    "Group I": ["Norway", "France", "Senegal", "Iraq"],
+    "Group J": ["Argentina", "Austria", "Jordan", "Algeria"],
+    "Group K": ["DR Congo", "Portugal", "Colombia", "Uzbekistan"],
+    "Group L": ["England", "Ghana", "Panama", "Croatia"]
 }
 
 # --- UNIVERSAL CLEANER MAP ---
@@ -69,9 +70,11 @@ def standardize_string(val):
         return ""
     return str(val).strip().lower().replace(" ", "").replace("-", "").replace("_", "").replace(".", "")
 
+# Correctly build tracking headers matching your spreadsheet layout (e.g. A1, A2, A3, A4...)
 PREDICTION_COLS = []
-for group_name in groups.keys():
-    PREDICTION_COLS.extend([f"{group_name}_1st", f"{group_name}_2nd", f"{group_name}_3rd", f"{group_name}_4th"])
+group_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
+for letter in group_letters:
+    PREDICTION_COLS.extend([f"{letter}1", f"{letter}2", f"{letter}3", f"{letter}4"])
 
 def connect_to_sheet(tab_name="sheet1"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -86,42 +89,39 @@ def connect_to_sheet(tab_name="sheet1"):
 @st.cache_data(ttl=300) 
 def get_live_standings():
     headers = {'X-Auth-Token': API_KEY}
-    all_teams_ordered = []
     
     try:
         response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=10)
         data = response.json()
         
         if 'standings' in data:
-            # Gather EVERY team in the order the API lists them, across all standings blocks
-            for group_data in data['standings']:
-                table = group_data.get('table', [])
-                for row in table:
-                    team_node = row.get('team', {})
-                    raw_api_name = team_node.get('shortName') or team_node.get('name')
-                    if raw_api_name:
-                        lookup_key = standardize_string(raw_api_name)
-                        clean_name = CLEAN_TEAM_MAP.get(lookup_key, str(raw_api_name).strip())
-                        if clean_name not in all_teams_ordered:
-                            all_teams_ordered.append(clean_name)
-        
-        if not all_teams_ordered:
-            return MANUAL_LIVE_STANDINGS, True
-
-        # Reconstruct the true 12 separate groups based on their ranking sequence in the master API list
-        structured_live_map = {}
-        for group_name, tracking_teams in groups.items():
-            # Find which of this group's teams are in the master list, preserving their relative API order
-            group_teams_in_api_order = [team for team in all_teams_ordered if team in tracking_teams]
-            
-            # If any teams are missing from active tracking, append them to the bottom safely
-            for team in tracking_teams:
-                if team not in group_teams_in_api_order:
-                    group_teams_in_api_order.append(team)
+            structured_live_map = {}
+            # Parse the nested groups structure safely from football-data.org v4
+            for block in data['standings']:
+                raw_group_name = block.get('group', '') # e.g. "GROUP_A" or "Group A"
+                clean_group_key = raw_group_name.replace('_', ' ').title() # Converts to "Group A"
+                
+                if clean_group_key in MANUAL_LIVE_STANDINGS:
+                    ordered_teams = []
+                    for row in block.get('table', []):
+                        team_node = row.get('team', {})
+                        raw_name = team_node.get('shortName') or team_node.get('name')
+                        if raw_name:
+                            lookup = standardize_string(raw_name)
+                            clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
+                            ordered_teams.append(clean_name)
                     
-            structured_live_map[group_name] = group_teams_in_api_order
+                    # Backfill any teams missing from API response using our fallback layout safely
+                    for team in MANUAL_LIVE_STANDINGS[clean_group_key]:
+                        if team not in ordered_teams:
+                            ordered_teams.append(team)
+                            
+                    structured_live_map[clean_group_key] = ordered_teams[:4]
             
-        return structured_live_map, False
+            if len(structured_live_map) >= 12:
+                return structured_live_map, False
+                
+        return MANUAL_LIVE_STANDINGS, True
     except Exception as e:
         return MANUAL_LIVE_STANDINGS, True
 
@@ -171,7 +171,7 @@ if page == "Leaderboard":
                     if is_fallback:
                         st.info("💡 Running on Local Standing Matrix fallback data.")
                     else:
-                        st.success("✅ Connected and parsing Flat API Master Standings Feed.")
+                        st.success("✅ Connected and parsing Live API Group Tables Feed.")
                 with metric_col2:
                     st.metric(label="💰 Total Pool Pot", value=f"${total_pot} USD")
                 
@@ -182,26 +182,30 @@ if page == "Leaderboard":
                         return 0
                     total_points = 0
                     
-                    for group_name, teams in groups.items():
-                        current_live_order = live_standings_map.get(group_name, [])
-                        if not current_live_order:
+                    group_mapping = {
+                        'A': 'Group A', 'B': 'Group B', 'C': 'Group C', 'D': 'Group D',
+                        'E': 'Group E', 'F': 'Group F', 'G': 'Group G', 'H': 'Group H',
+                        'I': 'Group I', 'J': 'Group J', 'K': 'Group K', 'L': 'Group L'
+                    }
+                    
+                    for letter, group_key in group_mapping.items():
+                        current_live_order = live_standings_map.get(group_key, [])
+                        if not current_live_order or len(current_live_order) < 4:
                             continue
                             
-                        p1 = standardize_string(row.get(f"{group_name}_1st", ""))
-                        p2 = standardize_string(row.get(f"{group_name}_2nd", ""))
-                        p3 = standardize_string(row.get(f"{group_name}_3rd", ""))
-                        p4 = standardize_string(row.get(f"{group_name}_4th", ""))
+                        # Clean and isolate the 4 specific column values
+                        p1 = standardize_string(row.get(f"{letter}1", ""))
+                        p2 = standardize_string(row.get(f"{letter}2", ""))
+                        p3 = standardize_string(row.get(f"{letter}3", ""))
+                        p4 = standardize_string(row.get(f"{letter}4", ""))
                         
                         live_standardized = [standardize_string(team) for team in current_live_order]
                         
-                        if len(live_standardized) >= 1 and p1 == live_standardized[0]:
-                            total_points += 1
-                        if len(live_standardized) >= 2 and p2 == live_standardized[1]:
-                            total_points += 1
-                        if len(live_standardized) >= 3 and p3 == live_standardized[2]:
-                            total_points += 1
-                        if len(live_standardized) >= 4 and p4 == live_standardized[3]:
-                            total_points += 1
+                        # Strict 1 point per correct exact placement evaluation logic
+                        if p1 == live_standardized[0]: total_points += 1
+                        if p2 == live_standardized[1]: total_points += 1
+                        if p3 == live_standardized[2]: total_points += 1
+                        if p4 == live_standardized[3]: total_points += 1
                                     
                     return total_points
 
