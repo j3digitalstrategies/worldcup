@@ -222,7 +222,24 @@ if page == "Leaderboard":
 
                 df['Points'] = df.apply(calculate_live_user_score, axis=1)
                 leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
-                st.dataframe(leaderboard_df, use_container_width=True, hide_index=True, height=1200)
+                
+                # Display leaderboard with individual download buttons
+                st.subheader("Current Standings")
+                for _, row in leaderboard_df.iterrows():
+                    cols = st.columns([3, 1, 1, 2])
+                    cols[0].write(f"**{row['Name']}**")
+                    cols[1].write(f"{row['Points']} pts")
+                    cols[2].write(f"{row['Status']}")
+                    
+                    # Get full row data for download
+                    user_full_data = df[df['Name'] == row['Name']]
+                    csv = user_full_data.to_csv(index=False).encode('utf-8')
+                    cols[3].download_button(
+                        label="📥 Download Picks", 
+                        data=csv, 
+                        file_name=f"{row['Name']}_picks.csv", 
+                        key=f"dl_{row['Name']}"
+                    )
                 
                 with st.expander("🛠️ Diagnostics View"):
                     st.json(live_standings_map)
