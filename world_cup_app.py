@@ -26,8 +26,8 @@ groups = {
     "Group L": ["England", "Croatia", "Ghana", "Panama"]
 }
 
-# --- MANUAL LIVE STANDINGS OVERRIDE (HARD FAIL-SAFE) ---
-MANUAL_LIVE_STANDINGS = {
+# --- HARDCODED SEED STANDINGS (Only used on very first boot if API is down) ---
+INITIAL_SEED_STANDINGS = {
     "Group A": ["Mexico", "South Korea", "Czechia", "South Africa"],
     "Group B": ["Switzerland", "Canada", "Qatar", "Bosnia"],
     "Group C": ["Scotland", "Morocco", "Brazil", "Haiti"],
@@ -45,8 +45,8 @@ MANUAL_LIVE_STANDINGS = {
 # --- UNIVERSAL CLEANER MAP ---
 CLEAN_TEAM_MAP = {
     "mexico": "Mexico", "southafrica": "South Africa", "southkorea": "South Korea",
-    "korearepublic": "South Korea", "czechia": "Czechia", "czechrepublic": "Czechia",
-    "canada": "Canada", "switzerland": "Switzerland", "qatar": "Qatar",
+    "korearepublic": "South Korea", "republicofkorea": "South Korea", "czechia": "Czechia", 
+    "czechrepublic": "Czechia", "canada": "Canada", "switzerland": "Switzerland", "qatar": "Qatar",
     "bosnia": "Bosnia", "bosniaandherzegovina": "Bosnia", "bosniaherzegovina": "Bosnia",
     "brazil": "Brazil", "morocco": "Morocco", "haiti": "Haiti",
     "scotland": "Scotland", "usa": "USA", "unitedstates": "USA", "paraguay": "Paraguay",
@@ -80,20 +80,27 @@ def connect_to_sheet(tab_name="sheet1"):
         return spreadsheet.sheet1
     return spreadsheet.worksheet(tab_name)
 
-@st.cache_data(ttl=300) 
-def get_live_standings():
+# Initialize persistent memory across page refreshes for robust automation
+if "automated_live_cache" not in st.session_state:
+    st.session_state["automated_live_cache"] = INITIAL_SEED_STANDINGS
+if "cache_status_msg" not in st.session_state:
+    st.session_state["cache_status_msg"] = "🔄 Initializing data pipeline..."
+
+@st.cache_data(ttl=600)  # Checked every 10 minutes to safely respect free API rate limits
+def fetch_and_merge_api_data():
     headers = {'X-Auth-Token': API_KEY}
     try:
-        response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=10)
+        response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
         data = response.json()
         
-        if 'standings' in data:
-            structured_live_map = {}
+        if 'standings' in data and len(data['standings']) > 0:
+            updated_map = {}
             for block in data['standings']:
                 raw_group_name = block.get('group', '')
                 clean_group_key = raw_group_name.replace('_', ' ').title()
                 
-                if clean_group_key in MANUAL_LIVE_STANDINGS:
+                # Verify this is one of our 12 World Cup groups
+                if clean_group_key in INITIAL_SEED_STANDINGS:
                     ordered_teams = []
                     for row in block.get('table', []):
                         team_node = row.get('team', {})
@@ -103,18 +110,28 @@ def get_live_standings():
                             clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
                             ordered_teams.append(clean_name)
                     
-                    for team in MANUAL_LIVE_STANDINGS[clean_group_key]:
+                    # Backfill missing teams if the group is still partially populated
+                    for team in INITIAL_SEED_STANDINGS[clean_group_key]:
                         if team not in ordered_teams:
                             ordered_teams.append(team)
                             
-                    structured_live_map[clean_group_key] = ordered_teams[:4]
+                    if len(ordered_teams) >= 4:
+                        updated_map[clean_group_key] = ordered_teams[:4]
             
-            if len(structured_live_map) >= 12:
-                return structured_live_map, False
-                
-        return MANUAL_LIVE_STANDINGS, True
+            # If the API gave us valid data for groups, gracefully merge/update memory
+            if len(updated_map) > 0:
+                # Merge fresh groups with previously stored groups to preserve partial updates
+                current_memory = dict(st.session_state["automated_live_cache"])
+                current_memory.update(updated_map)
+                st.session_state["automated_live_cache"] = current_memory
+                st.session_state["cache_status_msg"] = f"✅ Fully Automated: Sync accurate as of {datetime.now().strftime('%H:%M')}"
+                return current_memory, False
+
+        st.session_state["cache_status_msg"] = "📡 API connection delayed. Utilizing last known saved live standings."
+        return st.session_state["automated_live_cache"], True
     except Exception as e:
-        return MANUAL_LIVE_STANDINGS, True
+        st.session_state["cache_status_msg"] = "📡 API connection delayed. Utilizing last known saved live standings."
+        return st.session_state["automated_live_cache"], True
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
@@ -135,7 +152,7 @@ with st.sidebar:
 if page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
     with st.spinner("Calculating live scores..."):
-        live_standings_map, is_fallback = get_live_standings()
+        live_standings_map, is_using_memory_fallback = fetch_and_merge_api_data()
         
         try:
             sheet = connect_to_sheet()
@@ -150,7 +167,6 @@ if page == "Leaderboard":
                     rename_dict[df.columns[1]] = 'Name'
                 
                 for col in df.columns:
-                    # Clear whitespace out of headers entirely and uppercase them
                     clean_col = re.sub(r'\s+', '', str(col)).upper()
                     match = re.match(r'^([A-L][1-4])$', clean_col)
                     if match:
@@ -167,10 +183,10 @@ if page == "Leaderboard":
 
                 metric_col1, metric_col2 = st.columns([3, 1])
                 with metric_col1:
-                    if is_fallback:
-                        st.info("💡 Running on Local Standing Matrix fallback data.")
+                    if is_using_memory_fallback:
+                        st.info(st.session_state["cache_status_msg"])
                     else:
-                        st.success("✅ Connected and parsing Live API Group Tables Feed.")
+                        st.success(st.session_state["cache_status_msg"])
                 with metric_col2:
                     st.metric(label="💰 Total Pool Pot", value=f"${total_pot} USD")
                 
