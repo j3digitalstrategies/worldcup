@@ -223,22 +223,29 @@ if page == "Leaderboard":
                 df['Points'] = df.apply(calculate_live_user_score, axis=1)
                 leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
                 
-                # Display leaderboard with individual download buttons
+                # Table-like Display with Download Button
                 st.subheader("Current Standings")
+                header_cols = st.columns([2, 1, 1, 2])
+                header_cols[0].markdown("**Name**")
+                header_cols[1].markdown("**Points**")
+                header_cols[2].markdown("**Status**")
+                header_cols[3].markdown("**Download**")
+                st.divider()
+                
                 for _, row in leaderboard_df.iterrows():
-                    cols = st.columns([3, 1, 1, 2])
-                    cols[0].write(f"**{row['Name']}**")
-                    cols[1].write(f"{row['Points']} pts")
-                    cols[2].write(f"{row['Status']}")
+                    cols = st.columns([2, 1, 1, 2])
+                    cols[0].write(row['Name'])
+                    cols[1].write(row['Points'])
+                    cols[2].write(row['Status'])
                     
-                    # Get full row data for download
-                    user_full_data = df[df['Name'] == row['Name']]
-                    csv = user_full_data.to_csv(index=False).encode('utf-8')
+                    # Create CSV for the specific user
+                    user_row_df = df[df['Name'] == row['Name']]
+                    csv = user_row_df.to_csv(index=False).encode('utf-8')
                     cols[3].download_button(
-                        label="📥 Download Picks", 
+                        label="📥 CSV", 
                         data=csv, 
                         file_name=f"{row['Name']}_picks.csv", 
-                        key=f"dl_{row['Name']}"
+                        key=f"dl_{row['Name']}_{row['Points']}"
                     )
                 
                 with st.expander("🛠️ Diagnostics View"):
