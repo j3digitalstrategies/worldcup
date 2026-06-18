@@ -143,18 +143,19 @@ if page == "Leaderboard":
             if records:
                 df = pd.DataFrame(records)
                 
-                # Dynamic column validation by structural matching instead of sequential counting
+                # Rigid string normalizer mapping step for keys
                 rename_dict = {}
                 if len(df.columns) >= 2:
                     rename_dict[df.columns[0]] = 'Timestamp'
                     rename_dict[df.columns[1]] = 'Name'
                 
-                # Check for explicit named string headers from form output
                 for col in df.columns:
-                    match = re.match(r'^([A-L][1-4])$', str(col).strip())
+                    # Clear whitespace out of headers entirely and uppercase them
+                    clean_col = re.sub(r'\s+', '', str(col)).upper()
+                    match = re.match(r'^([A-L][1-4])$', clean_col)
                     if match:
                         rename_dict[col] = match.group(1)
-                    elif str(col).strip().lower() == 'status':
+                    elif clean_col == 'STATUS':
                         rename_dict[col] = 'Status'
                 
                 df = df.rename(columns=rename_dict)
