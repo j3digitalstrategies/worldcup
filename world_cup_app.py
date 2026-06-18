@@ -67,14 +67,8 @@ CLEAN_TEAM_MAP = {
 def standardize_string(val):
     if val is None:
         return ""
-    # Strip non-breaking spaces and hidden characters using explicit regex character purging
     cleaned = re.sub(r'[\s\xa0\u200b\u200c\u200d]+', '', str(val))
     return cleaned.lower().replace("-", "").replace("_", "").replace(".", "")
-
-PREDICTION_COLS = []
-group_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
-for letter in group_letters:
-    PREDICTION_COLS.extend([f"{letter}1", f"{letter}2", f"{letter}3", f"{letter}4"])
 
 def connect_to_sheet(tab_name="sheet1"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -149,12 +143,19 @@ if page == "Leaderboard":
             if records:
                 df = pd.DataFrame(records)
                 
-                rename_dict = {df.columns[0]: 'Timestamp', df.columns[1]: 'Name'}
-                for idx, col_name in enumerate(PREDICTION_COLS):
-                    if idx + 2 < len(df.columns):
-                        rename_dict[df.columns[idx + 2]] = col_name
-                if len(df.columns) > len(PREDICTION_COLS) + 2:
-                    rename_dict[df.columns[-1]] = 'Status'
+                # Dynamic column validation by structural matching instead of sequential counting
+                rename_dict = {}
+                if len(df.columns) >= 2:
+                    rename_dict[df.columns[0]] = 'Timestamp'
+                    rename_dict[df.columns[1]] = 'Name'
+                
+                # Check for explicit named string headers from form output
+                for col in df.columns:
+                    match = re.match(r'^([A-L][1-4])$', str(col).strip())
+                    if match:
+                        rename_dict[col] = match.group(1)
+                    elif str(col).strip().lower() == 'status':
+                        rename_dict[col] = 'Status'
                 
                 df = df.rename(columns=rename_dict)
                 if 'Status' not in df.columns:
@@ -195,7 +196,6 @@ if page == "Leaderboard":
                         p3 = CLEAN_TEAM_MAP.get(standardize_string(row.get(f"{letter}3", "")), "")
                         p4 = CLEAN_TEAM_MAP.get(standardize_string(row.get(f"{letter}4", "")), "")
                         
-                        # Compare directly against mapped string lists safely
                         if p1 == current_live_order[0]: total_points += 1
                         if p2 == current_live_order[1]: total_points += 1
                         if p3 == current_live_order[2]: total_points += 1
