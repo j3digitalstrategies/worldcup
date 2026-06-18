@@ -4,7 +4,7 @@ import gspread
 import requests
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
-import io
+import re
 
 # --- CONFIGURATION ---
 API_KEY = '63ba1313af494222bddfb7f14879b920' 
@@ -27,7 +27,6 @@ groups = {
 }
 
 # --- MANUAL LIVE STANDINGS OVERRIDE (HARD FAIL-SAFE) ---
-# Checked and validated current tournament standings as of June 18, 2026
 MANUAL_LIVE_STANDINGS = {
     "Group A": ["Mexico", "South Korea", "Czechia", "South Africa"],
     "Group B": ["Switzerland", "Canada", "Qatar", "Bosnia"],
@@ -49,7 +48,7 @@ CLEAN_TEAM_MAP = {
     "korearepublic": "South Korea", "czechia": "Czechia", "czechrepublic": "Czechia",
     "canada": "Canada", "switzerland": "Switzerland", "qatar": "Qatar",
     "bosnia": "Bosnia", "bosniaandherzegovina": "Bosnia", "bosniaherzegovina": "Bosnia",
-    "bosniah": "Bosnia", "brazil": "Brazil", "morocco": "Morocco", "haiti": "Haiti",
+    "brazil": "Brazil", "morocco": "Morocco", "haiti": "Haiti",
     "scotland": "Scotland", "usa": "USA", "unitedstates": "USA", "paraguay": "Paraguay",
     "australia": "Australia", "türkiye": "Türkiye", "turkey": "Türkiye",
     "germany": "Germany", "curaçao": "Curaçao", "curacao": "Curaçao",
@@ -66,11 +65,12 @@ CLEAN_TEAM_MAP = {
 }
 
 def standardize_string(val):
-    if not val:
+    if val is None:
         return ""
-    return str(val).strip().lower().replace(" ", "").replace("-", "").replace("_", "").replace(".", "")
+    # Strip non-breaking spaces and hidden characters using explicit regex character purging
+    cleaned = re.sub(r'[\s\xa0\u200b\u200c\u200d]+', '', str(val))
+    return cleaned.lower().replace("-", "").replace("_", "").replace(".", "")
 
-# Correctly build tracking headers matching your spreadsheet layout (e.g. A1, A2, A3, A4...)
 PREDICTION_COLS = []
 group_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
 for letter in group_letters:
@@ -89,17 +89,15 @@ def connect_to_sheet(tab_name="sheet1"):
 @st.cache_data(ttl=300) 
 def get_live_standings():
     headers = {'X-Auth-Token': API_KEY}
-    
     try:
         response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=10)
         data = response.json()
         
         if 'standings' in data:
             structured_live_map = {}
-            # Parse the nested groups structure safely from football-data.org v4
             for block in data['standings']:
-                raw_group_name = block.get('group', '') # e.g. "GROUP_A" or "Group A"
-                clean_group_key = raw_group_name.replace('_', ' ').title() # Converts to "Group A"
+                raw_group_name = block.get('group', '')
+                clean_group_key = raw_group_name.replace('_', ' ').title()
                 
                 if clean_group_key in MANUAL_LIVE_STANDINGS:
                     ordered_teams = []
@@ -111,7 +109,6 @@ def get_live_standings():
                             clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
                             ordered_teams.append(clean_name)
                     
-                    # Backfill any teams missing from API response using our fallback layout safely
                     for team in MANUAL_LIVE_STANDINGS[clean_group_key]:
                         if team not in ordered_teams:
                             ordered_teams.append(team)
@@ -134,11 +131,11 @@ with st.sidebar:
     user_name = st.text_input("Full Name:")
     st.divider()
     st.markdown("### 📸 Official Instagram")
-    st.write("Make sure you follow the official instagram **@2026fifawcp** for updates and general banter.")
+    st.write("Make sure you follow the official instagram **@2026fifawcp** for updates.")
     try:
         st.image("qr-code.png", caption="Scan to follow", use_container_width=True)
     except:
-        st.caption("(QR Code image file missing in repository)")
+        st.caption("(QR Code image file missing)")
 
 # --- PAGE 1: LEADERBOARD ---
 if page == "Leaderboard":
@@ -193,19 +190,16 @@ if page == "Leaderboard":
                         if not current_live_order or len(current_live_order) < 4:
                             continue
                             
-                        # Clean and isolate the 4 specific column values
-                        p1 = standardize_string(row.get(f"{letter}1", ""))
-                        p2 = standardize_string(row.get(f"{letter}2", ""))
-                        p3 = standardize_string(row.get(f"{letter}3", ""))
-                        p4 = standardize_string(row.get(f"{letter}4", ""))
+                        p1 = CLEAN_TEAM_MAP.get(standardize_string(row.get(f"{letter}1", "")), "")
+                        p2 = CLEAN_TEAM_MAP.get(standardize_string(row.get(f"{letter}2", "")), "")
+                        p3 = CLEAN_TEAM_MAP.get(standardize_string(row.get(f"{letter}3", "")), "")
+                        p4 = CLEAN_TEAM_MAP.get(standardize_string(row.get(f"{letter}4", "")), "")
                         
-                        live_standardized = [standardize_string(team) for team in current_live_order]
-                        
-                        # Strict 1 point per correct exact placement evaluation logic
-                        if p1 == live_standardized[0]: total_points += 1
-                        if p2 == live_standardized[1]: total_points += 1
-                        if p3 == live_standardized[2]: total_points += 1
-                        if p4 == live_standardized[3]: total_points += 1
+                        # Compare directly against mapped string lists safely
+                        if p1 == current_live_order[0]: total_points += 1
+                        if p2 == current_live_order[1]: total_points += 1
+                        if p3 == current_live_order[2]: total_points += 1
+                        if p4 == current_live_order[3]: total_points += 1
                                     
                     return total_points
 
@@ -213,8 +207,7 @@ if page == "Leaderboard":
                 leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
                 st.dataframe(leaderboard_df, use_container_width=True, hide_index=True, height=1200)
                 
-                with st.expander("🛠️ Diagnostics View (Verify Decoded Sub-Groups)"):
-                    st.write("Parsed and isolated groups processed from the flat API list:")
+                with st.expander("🛠️ Diagnostics View"):
                     st.json(live_standings_map)
             else:
                 st.info("No entries yet.")
@@ -269,7 +262,7 @@ elif page == "Rules & Chat Forum":
         st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
         st.write("**Scoring System:** Each correct position pick = 1 point.")
         st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
-        st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com  \n**UK/EU:** Send a carrier pidgeon to Jack Johnson")
+        st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
         st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
 
     st.divider()
@@ -279,7 +272,7 @@ elif page == "Rules & Chat Forum":
         submitted = st.form_submit_button("Post Message")
         if submitted:
             if not user_name:
-                st.error("Please enter your name in the sidebar before posting.")
+                st.error("Please enter your name in the sidebar.")
             elif not comment:
                 st.error("Message cannot be empty.")
             else:
@@ -289,7 +282,7 @@ elif page == "Rules & Chat Forum":
                     chat_sheet.append_row([now, user_name, comment])
                     st.success("Message posted!")
                 except:
-                    st.error("Could not post message. Ensure the 'Chat_Data' tab exists.")
+                    st.error("Could not post message.")
 
     try:
         chat_sheet = connect_to_sheet("Chat_Data")
@@ -299,7 +292,5 @@ elif page == "Rules & Chat Forum":
                 st.markdown(f"**{msg['User']}** ({msg['Timestamp']})")
                 st.write(msg['Message'])
                 st.divider()
-        else:
-            st.info("No messages yet. Be the first to start the conversation!")
     except:
         st.warning("Chat history is currently unavailable.")
