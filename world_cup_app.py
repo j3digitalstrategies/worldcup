@@ -26,7 +26,7 @@ groups = {
     "Group L": ["England", "Croatia", "Ghana", "Panama"]
 }
 
-# --- HARDCODED SEED STANDINGS (Only used on very first boot if API is down) ---
+# --- HARDCODED SEED STANDINGS ---
 INITIAL_SEED_STANDINGS = {
     "Group A": ["Mexico", "South Korea", "Czechia", "South Africa"],
     "Group B": ["Switzerland", "Canada", "Qatar", "Bosnia"],
@@ -80,19 +80,18 @@ def connect_to_sheet(tab_name="sheet1"):
         return spreadsheet.sheet1
     return spreadsheet.worksheet(tab_name)
 
-# Initialize persistent memory across page refreshes for robust automation
 if "automated_live_cache" not in st.session_state:
     st.session_state["automated_live_cache"] = INITIAL_SEED_STANDINGS
 if "cache_status_msg" not in st.session_state:
     st.session_state["cache_status_msg"] = "🔄 Initializing data pipeline..."
 
-@st.cache_data(ttl=10800)  # Checked every 3 hours to safely respect free API rate limits
+@st.cache_data(ttl=10800)
 def fetch_and_merge_api_data():
     headers = {'X-Auth-Token': API_KEY}
     response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
     
     if response.status_code != 200:
-        raise Exception(f"API HTTP Status {response.status_code}: {response.text}")
+        raise Exception(f"HTTP Error {response.status_code}: {response.text}")
         
     data = response.json()
     if 'standings' not in data or len(data['standings']) == 0:
@@ -103,7 +102,6 @@ def fetch_and_merge_api_data():
         raw_group_name = block.get('group', '')
         clean_group_key = raw_group_name.replace('_', ' ').title()
         
-        # Verify this is one of our 12 World Cup groups
         if clean_group_key in INITIAL_SEED_STANDINGS:
             ordered_teams = []
             for row in block.get('table', []):
@@ -114,7 +112,6 @@ def fetch_and_merge_api_data():
                     clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
                     ordered_teams.append(clean_name)
             
-            # Backfill missing teams if the group is still partially populated
             for team in INITIAL_SEED_STANDINGS[clean_group_key]:
                 if team not in ordered_teams:
                     ordered_teams.append(team)
@@ -123,7 +120,7 @@ def fetch_and_merge_api_data():
                 updated_map[clean_group_key] = ordered_teams[:4]
                 
     if len(updated_map) == 0:
-        raise Exception("No matching groups parsed from API response structure")
+        raise Exception("No matching groups parsed from API response")
         
     return updated_map
 
@@ -143,7 +140,6 @@ with st.sidebar:
         st.caption("(QR Code image file missing)")
         
     st.divider()
-    # Programmatic cache clearer bypasses missing app-menu item issues completely
     if st.button("🔄 Force Refresh Cache", use_container_width=True):
         st.cache_data.clear()
         if "api_error_details" in st.session_state:
@@ -154,7 +150,6 @@ with st.sidebar:
 if page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
     with st.spinner("Calculating live scores..."):
-        # Fetch directly; exceptions bubble up safely without ruining the 3-hour cache memory
         try:
             api_data = fetch_and_merge_api_data()
             current_memory = dict(st.session_state["automated_live_cache"])
@@ -177,7 +172,6 @@ if page == "Leaderboard":
             if records:
                 df = pd.DataFrame(records)
                 
-                # Rigid string normalizer mapping step for keys
                 rename_dict = {}
                 if len(df.columns) >= 2:
                     rename_dict[df.columns[0]] = 'Timestamp'
@@ -202,6 +196,8 @@ if page == "Leaderboard":
                 with metric_col1:
                     if is_using_memory_fallback:
                         st.info(st.session_state["cache_status_msg"])
+                        if "api_error_details" in st.session_state:
+                            st.error(f"❌ Raw Server Response: {st.session_state['api_error_details']}")
                     else:
                         st.success(st.session_state["cache_status_msg"])
                 with metric_col2:
@@ -240,7 +236,6 @@ if page == "Leaderboard":
                 df['Points'] = df.apply(calculate_live_user_score, axis=1)
                 leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
                 
-                # Table-like Display with Download Button
                 st.subheader("Current Standings")
                 header_cols = st.columns([2, 1, 1, 2])
                 header_cols[0].markdown("**Name**")
@@ -255,7 +250,6 @@ if page == "Leaderboard":
                     cols[1].write(row['Points'])
                     cols[2].write(row['Status'])
                     
-                    # Create CSV for the specific user
                     user_row_df = df[df['Name'] == row['Name']]
                     csv = user_row_df.to_csv(index=False).encode('utf-8')
                     cols[3].download_button(
@@ -268,9 +262,6 @@ if page == "Leaderboard":
                 with st.expander("🛠️ Diagnostics View"):
                     st.write("#### Live Standings Memory Map:")
                     st.json(live_standings_map)
-                    if "api_error_details" in st.session_state:
-                        st.write("#### Last API Connection Issue:")
-                        st.error(st.session_state["api_error_details"])
             else:
                 st.info("No entries yet.")
         except Exception as e:
