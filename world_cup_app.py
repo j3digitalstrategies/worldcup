@@ -98,14 +98,37 @@ def fetch_and_merge_api_data():
         raise Exception("Invalid or empty data payload from API")
         
     updated_map = {}
+    
     for block in data['standings']:
-        raw_group_name = block.get('group')
-        # Structural fix: Safely bypass blocks where group keys contain Null types
-        if not raw_group_name:
-            continue
-            
-        clean_group_key = str(raw_group_name).replace('_', ' ').title()
+        clean_group_key = None
         
+        # Strategy 1: Attempt Regex matching on the 'group' field text
+        raw_group_name = block.get('group')
+        if raw_group_name:
+            group_str = str(raw_group_name).upper()
+            match = re.search(r'\b([A-L])\b|GROUP[\s_-]*([A-L])', group_str)
+            if match:
+                letter = match.group(1) or match.group(2)
+                clean_group_key = f"Group {letter}"
+        
+        # Strategy 2 (Fallback): Auto-deduce group based on the teams present in the table
+        if not clean_group_key or clean_group_key not in INITIAL_SEED_STANDINGS:
+            for row in block.get('table', []):
+                team_node = row.get('team', {})
+                raw_name = team_node.get('shortName') or team_node.get('name')
+                if raw_name:
+                    lookup = standardize_string(raw_name)
+                    clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
+                    
+                    # Search across official configurations to find where this team belongs
+                    for g_key, g_teams in groups.items():
+                        if clean_name in g_teams:
+                            clean_group_key = g_key
+                            break
+                if clean_group_key:
+                    break
+                    
+        # Process team ordering if the group was successfully identified
         if clean_group_key in INITIAL_SEED_STANDINGS:
             ordered_teams = []
             for row in block.get('table', []):
@@ -116,6 +139,7 @@ def fetch_and_merge_api_data():
                     clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
                     ordered_teams.append(clean_name)
             
+            # Fill out missing teams using seed standings
             for team in INITIAL_SEED_STANDINGS[clean_group_key]:
                 if team not in ordered_teams:
                     ordered_teams.append(team)
@@ -124,7 +148,7 @@ def fetch_and_merge_api_data():
                 updated_map[clean_group_key] = ordered_teams[:4]
                 
     if len(updated_map) == 0:
-        raise Exception("No matching groups parsed from API response structure")
+        raise Exception("No matching groups could be identified or parsed from the server response data structure.")
         
     return updated_map
 
