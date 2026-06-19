@@ -99,8 +99,12 @@ def fetch_and_merge_api_data():
         
     updated_map = {}
     for block in data['standings']:
-        raw_group_name = block.get('group', '')
-        clean_group_key = raw_group_name.replace('_', ' ').title()
+        raw_group_name = block.get('group')
+        # Structural fix: Safely bypass blocks where group keys contain Null types
+        if not raw_group_name:
+            continue
+            
+        clean_group_key = str(raw_group_name).replace('_', ' ').title()
         
         if clean_group_key in INITIAL_SEED_STANDINGS:
             ordered_teams = []
@@ -120,7 +124,7 @@ def fetch_and_merge_api_data():
                 updated_map[clean_group_key] = ordered_teams[:4]
                 
     if len(updated_map) == 0:
-        raise Exception("No matching groups parsed from API response")
+        raise Exception("No matching groups parsed from API response structure")
         
     return updated_map
 
