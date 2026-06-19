@@ -80,36 +80,35 @@ if "automated_live_cache" not in st.session_state:
 if "cache_status_msg" not in st.session_state:
     st.session_state["cache_status_msg"] = "🔄 Initializing data pipeline..."
 
-@st.cache_data(ttl=1800) # Increased TTL to 30 mins to reduce API load
+@st.cache_data(ttl=600)
 def fetch_and_merge_api_data():
     headers = {'X-Auth-Token': API_KEY}
     try:
         response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
-        if response.status_code == 200:
-            data = response.json()
-            if 'standings' in data and len(data['standings']) > 0:
-                updated_map = {}
-                for block in data['standings']:
-                    raw_group_name = block.get('group', '')
-                    clean_group_key = raw_group_name.replace('_', ' ').title()
-                    if clean_group_key in INITIAL_SEED_STANDINGS:
-                        ordered_teams = []
-                        for row in block.get('table', []):
-                            team_node = row.get('team', {})
-                            raw_name = team_node.get('shortName') or team_node.get('name')
-                            if raw_name:
-                                lookup = standardize_string(raw_name)
-                                clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
-                                ordered_teams.append(clean_name)
-                        for team in INITIAL_SEED_STANDINGS[clean_group_key]:
-                            if team not in ordered_teams: ordered_teams.append(team)
-                        if len(ordered_teams) >= 4: updated_map[clean_group_key] = ordered_teams[:4]
-                if len(updated_map) > 0:
-                    current_memory = dict(st.session_state["automated_live_cache"])
-                    current_memory.update(updated_map)
-                    st.session_state["automated_live_cache"] = current_memory
-                    st.session_state["cache_status_msg"] = f"✅ Sync accurate as of {datetime.now().strftime('%H:%M')}"
-                    return current_memory, False
+        data = response.json()
+        if 'standings' in data and len(data['standings']) > 0:
+            updated_map = {}
+            for block in data['standings']:
+                raw_group_name = block.get('group', '')
+                clean_group_key = raw_group_name.replace('_', ' ').title()
+                if clean_group_key in INITIAL_SEED_STANDINGS:
+                    ordered_teams = []
+                    for row in block.get('table', []):
+                        team_node = row.get('team', {})
+                        raw_name = team_node.get('shortName') or team_node.get('name')
+                        if raw_name:
+                            lookup = standardize_string(raw_name)
+                            clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
+                            ordered_teams.append(clean_name)
+                    for team in INITIAL_SEED_STANDINGS[clean_group_key]:
+                        if team not in ordered_teams: ordered_teams.append(team)
+                    if len(ordered_teams) >= 4: updated_map[clean_group_key] = ordered_teams[:4]
+            if len(updated_map) > 0:
+                current_memory = dict(st.session_state["automated_live_cache"])
+                current_memory.update(updated_map)
+                st.session_state["automated_live_cache"] = current_memory
+                st.session_state["cache_status_msg"] = f"✅ Sync accurate as of {datetime.now().strftime('%H:%M')}"
+                return current_memory, False
         st.session_state["cache_status_msg"] = "📡 API connection delayed. Utilizing last known saved live standings."
         return st.session_state["automated_live_cache"], True
     except Exception:
@@ -123,7 +122,6 @@ page = st.sidebar.radio("Navigation", ["Leaderboard", "Make Predictions", "Rules
 with st.sidebar:
     st.header("Player Info")
     user_name = st.text_input("Full Name:")
-    age = st.number_input("Kid's Age (if applicable):", min_value=0, max_value=100, step=1)
     st.divider()
 
 if page == "Leaderboard":
@@ -159,6 +157,9 @@ if page == "Leaderboard":
         leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
         
         st.subheader("Current Standings")
+        header_cols = st.columns([2, 1, 1, 2])
+        header_cols[0].markdown("**Name**"); header_cols[1].markdown("**Points**"); header_cols[2].markdown("**Status**"); header_cols[3].markdown("**Download**")
+        st.divider()
         for _, row in leaderboard_df.iterrows():
             cols = st.columns([2, 1, 1, 2])
             cols[0].write(row['Name']); cols[1].write(row['Points']); cols[2].write(row['Status'])
@@ -188,8 +189,6 @@ elif page == "Make Predictions":
 
 elif page == "Rules & Chat Forum":
     st.title("📜 Rules & Chat Forum")
-    st.info("Pedagogy: This pool is designed to teach tournament structures and predictive modeling.")
-    # Chat logic remains same...
     try:
         messages = connect_to_sheet("Chat_Data").get_all_records()
         for msg in reversed(messages[-15:]):
