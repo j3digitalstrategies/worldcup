@@ -92,7 +92,7 @@ def fetch_and_merge_api_data():
     response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
     
     if response.status_code != 200:
-        raise Exception(f"API HTTP Status {response.status_code}")
+        raise Exception(f"API HTTP Status {response.status_code}: {response.text}")
         
     data = response.json()
     if 'standings' not in data or len(data['standings']) == 0:
@@ -123,7 +123,7 @@ def fetch_and_merge_api_data():
                 updated_map[clean_group_key] = ordered_teams[:4]
                 
     if len(updated_map) == 0:
-        raise Exception("No matching groups parsed")
+        raise Exception("No matching groups parsed from API response structure")
         
     return updated_map
 
@@ -141,6 +141,14 @@ with st.sidebar:
         st.image("qr-code.png", caption="Scan to follow", use_container_width=True)
     except:
         st.caption("(QR Code image file missing)")
+        
+    st.divider()
+    # Programmatic cache clearer bypasses missing app-menu item issues completely
+    if st.button("🔄 Force Refresh Cache", use_container_width=True):
+        st.cache_data.clear()
+        if "api_error_details" in st.session_state:
+            del st.session_state["api_error_details"]
+        st.rerun()
 
 # --- PAGE 1: LEADERBOARD ---
 if page == "Leaderboard":
@@ -154,8 +162,11 @@ if page == "Leaderboard":
             st.session_state["automated_live_cache"] = current_memory
             st.session_state["cache_status_msg"] = f"✅ Fully Automated: Sync accurate as of {datetime.now().strftime('%H:%M')}"
             is_using_memory_fallback = False
-        except Exception:
+            if "api_error_details" in st.session_state:
+                del st.session_state["api_error_details"]
+        except Exception as api_err:
             st.session_state["cache_status_msg"] = "📡 API connection delayed. Utilizing last known saved live standings."
+            st.session_state["api_error_details"] = str(api_err)
             is_using_memory_fallback = True
             
         live_standings_map = st.session_state["automated_live_cache"]
@@ -255,7 +266,11 @@ if page == "Leaderboard":
                     )
                 
                 with st.expander("🛠️ Diagnostics View"):
+                    st.write("#### Live Standings Memory Map:")
                     st.json(live_standings_map)
+                    if "api_error_details" in st.session_state:
+                        st.write("#### Last API Connection Issue:")
+                        st.error(st.session_state["api_error_details"])
             else:
                 st.info("No entries yet.")
         except Exception as e:
