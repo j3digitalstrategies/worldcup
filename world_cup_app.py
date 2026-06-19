@@ -89,40 +89,43 @@ if "cache_status_msg" not in st.session_state:
 @st.cache_data(ttl=10800)  # Checked every 3 hours to safely respect free API rate limits
 def fetch_and_merge_api_data():
     headers = {'X-Auth-Token': API_KEY}
-    try:
-        response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
-        if response.status_code == 200:
-            data = response.json()
-            if 'standings' in data and len(data['standings']) > 0:
-                updated_map = {}
-                for block in data['standings']:
-                    raw_group_name = block.get('group', '')
-                    clean_group_key = raw_group_name.replace('_', ' ').title()
+    response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
+    
+    if response.status_code != 200:
+        raise Exception(f"API HTTP Status {response.status_code}")
+        
+    data = response.json()
+    if 'standings' not in data or len(data['standings']) == 0:
+        raise Exception("Invalid or empty data payload from API")
+        
+    updated_map = {}
+    for block in data['standings']:
+        raw_group_name = block.get('group', '')
+        clean_group_key = raw_group_name.replace('_', ' ').title()
+        
+        # Verify this is one of our 12 World Cup groups
+        if clean_group_key in INITIAL_SEED_STANDINGS:
+            ordered_teams = []
+            for row in block.get('table', []):
+                team_node = row.get('team', {})
+                raw_name = team_node.get('shortName') or team_node.get('name')
+                if raw_name:
+                    lookup = standardize_string(raw_name)
+                    clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
+                    ordered_teams.append(clean_name)
+            
+            # Backfill missing teams if the group is still partially populated
+            for team in INITIAL_SEED_STANDINGS[clean_group_key]:
+                if team not in ordered_teams:
+                    ordered_teams.append(team)
                     
-                    # Verify this is one of our 12 World Cup groups
-                    if clean_group_key in INITIAL_SEED_STANDINGS:
-                        ordered_teams = []
-                        for row in block.get('table', []):
-                            team_node = row.get('team', {})
-                            raw_name = team_node.get('shortName') or team_node.get('name')
-                            if raw_name:
-                                lookup = standardize_string(raw_name)
-                                clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
-                                ordered_teams.append(clean_name)
-                        
-                        # Backfill missing teams if the group is still partially populated
-                        for team in INITIAL_SEED_STANDINGS[clean_group_key]:
-                            if team not in ordered_teams:
-                                ordered_teams.append(team)
-                                
-                        if len(ordered_teams) >= 4:
-                            updated_map[clean_group_key] = ordered_teams[:4]
+            if len(ordered_teams) >= 4:
+                updated_map[clean_group_key] = ordered_teams[:4]
                 
-                if len(updated_map) > 0:
-                    return updated_map
-        return None
-    except Exception:
-        return None
+    if len(updated_map) == 0:
+        raise Exception("No matching groups parsed")
+        
+    return updated_map
 
 # --- APP UI SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
@@ -143,16 +146,15 @@ with st.sidebar:
 if page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
     with st.spinner("Calculating live scores..."):
-        # Fetch clean map directly from cache, avoiding internal session_state mutation conflicts
-        api_data = fetch_and_merge_api_data()
-        
-        if api_data is not None:
+        # Fetch directly; exceptions bubble up safely without ruining the 3-hour cache memory
+        try:
+            api_data = fetch_and_merge_api_data()
             current_memory = dict(st.session_state["automated_live_cache"])
             current_memory.update(api_data)
             st.session_state["automated_live_cache"] = current_memory
             st.session_state["cache_status_msg"] = f"✅ Fully Automated: Sync accurate as of {datetime.now().strftime('%H:%M')}"
             is_using_memory_fallback = False
-        else:
+        except Exception:
             st.session_state["cache_status_msg"] = "📡 API connection delayed. Utilizing last known saved live standings."
             is_using_memory_fallback = True
             
