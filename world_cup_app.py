@@ -131,7 +131,7 @@ def get_registered_players(retries=3):
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
             else:
-                st.error("⚠️ Could not load player list from Google Sheets.")
+                st.error("⚠️ Could not load player list.")
                 return []
         except Exception as e:
             st.error(f"⚠️ Unexpected error loading players: {e}")
@@ -229,13 +229,16 @@ if page == "Knockout Predictions":
             default_a = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
             default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home
             
-            # Logic: Green border if both teams known and not TBD
             is_ready = "TBD" not in [home, away]
-            border_style = "2px solid #2ecc71" if is_ready else "1px solid #ccc"
+            # Use unique styling class for ready matches
+            ready_class = "ready-match" if is_ready else "pending-match"
 
             with st.container(border=True):
-                # CSS for border
-                st.markdown(f"""<style>[data-testid="stVerticalBlock"]:has(> div > p > b:contains("{home}")) {{ border: {border_style} !important; border-radius: 5px; }}</style>""", unsafe_allow_html=True)
+                st.markdown(f"""<style>
+                    .ready-match {{ border: 2px solid #2ecc71 !important; border-radius: 5px; }}
+                    div[data-testid="stVerticalBlock"]:has(.{ready_class}) {{ border: { "2px solid #2ecc71" if is_ready else "1px solid #ccc" } !important; }}
+                </style>""", unsafe_allow_html=True)
+                st.markdown(f'<div class="{ready_class}"></div>', unsafe_allow_html=True)
                 
                 if date: st.caption(f"📅 Match {match_no} • {date}")
                 c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
@@ -255,7 +258,6 @@ if page == "Knockout Predictions":
 
                 st.session_state.ko_winners[tag] = chosen_winner
                 
-                # Lock/Update Button + Status Indicator
                 sub_c1, sub_c2 = st.columns([2, 2])
                 with sub_c1:
                     if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
