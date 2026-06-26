@@ -230,49 +230,49 @@ if page == "Knockout Predictions":
             default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home
             
             is_ready = "TBD" not in [home, away]
-            # Use unique styling class for ready matches
-            ready_class = "ready-match" if is_ready else "pending-match"
+            border_css = "2px solid #2ecc71" if is_ready else "1px solid #e0e0e0"
 
-            with st.container(border=True):
+            with st.container():
                 st.markdown(f"""<style>
-                    .ready-match {{ border: 2px solid #2ecc71 !important; border-radius: 5px; }}
-                    div[data-testid="stVerticalBlock"]:has(.{ready_class}) {{ border: { "2px solid #2ecc71" if is_ready else "1px solid #ccc" } !important; }}
+                    .match-container-{tag} {{ border: {border_css}; padding: 15px; border-radius: 8px; margin-bottom: 10px; }}
                 </style>""", unsafe_allow_html=True)
-                st.markdown(f'<div class="{ready_class}"></div>', unsafe_allow_html=True)
                 
-                if date: st.caption(f"📅 Match {match_no} • {date}")
-                c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
-                with c1:
-                    st.markdown(f"**{home}**")
-                    h_score = st.number_input("Goals", min_value=0, value=default_h, key=f"h_s_{tag}", disabled=is_locked)
-                with c2: st.markdown("<br><p style='text-align:center;'>VS</p>", unsafe_allow_html=True)
-                with c3:
-                    st.markdown(f"**{away}**")
-                    a_score = st.number_input("Goals", min_value=0, value=default_a, key=f"a_s_{tag}", disabled=is_locked)
-                with c4:
-                    if h_score == a_score:
-                        chosen_winner = st.selectbox("Advances via PKs:", [home, away], index=[home, away].index(default_w) if default_w in [home, away] else 0, key=f"pk_w_{tag}", disabled=is_locked)
-                    else:
-                        chosen_winner = home if h_score > a_score else away
-                        st.markdown(f"<br><p><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
-
-                st.session_state.ko_winners[tag] = chosen_winner
-                
-                sub_c1, sub_c2 = st.columns([2, 2])
-                with sub_c1:
-                    if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
-                        row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
-                        new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
-                        success = save_pick_with_retry(ko_sheet, row_i, new_row)
-                        if success:
-                            st.toast("✅ Saved!")
-                            st.rerun()
+                with st.container():
+                    st.markdown(f'<div class="match-container-{tag}">', unsafe_allow_html=True)
+                    if date: st.caption(f"📅 Match {match_no} • {date}")
+                    c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
+                    with c1:
+                        st.markdown(f"**{home}**")
+                        h_score = st.number_input("Goals", min_value=0, value=default_h, key=f"h_s_{tag}", disabled=is_locked)
+                    with c2: st.markdown("<br><p style='text-align:center;'>VS</p>", unsafe_allow_html=True)
+                    with c3:
+                        st.markdown(f"**{away}**")
+                        a_score = st.number_input("Goals", min_value=0, value=default_a, key=f"a_s_{tag}", disabled=is_locked)
+                    with c4:
+                        if h_score == a_score:
+                            chosen_winner = st.selectbox("Advances via PKs:", [home, away], index=[home, away].index(default_w) if default_w in [home, away] else 0, key=f"pk_w_{tag}", disabled=is_locked)
                         else:
-                            st.error("❌ Failed to save.")
-                
-                with sub_c2:
-                    if not exist_row.empty:
-                        st.markdown("🟢 **Submitted**")
+                            chosen_winner = home if h_score > a_score else away
+                            st.markdown(f"<br><p><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
+
+                    st.session_state.ko_winners[tag] = chosen_winner
+                    
+                    sub_c1, sub_c2 = st.columns([2, 2])
+                    with sub_c1:
+                        if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
+                            row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
+                            new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
+                            success = save_pick_with_retry(ko_sheet, row_i, new_row)
+                            if success:
+                                st.toast("✅ Saved!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to save.")
+                    
+                    with sub_c2:
+                        if not exist_row.empty:
+                            st.markdown("🟢 **Submitted**")
+                    st.markdown('</div>', unsafe_allow_html=True)
 
         st.subheader("1️⃣ Round of 32")
         api_r32 = sorted([m for m in raw_matches if m.get('stage') == "ROUND_OF_32"], key=lambda x: x.get('utcDate', ''))
