@@ -5,13 +5,14 @@ import requests
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import re
+import time
 
 # --- GLOBAL POOL CONFIGURATION ---
-API_KEY = '63ba1313af494222bddfb7f14879b920' 
+API_KEY = '63ba1313af494222bddfb7f14879b920'
 BASE_URL = "https://api.football-data.org/v4/competitions/WC/standings"
 MATCHES_URL = "https://api.football-data.org/v4/competitions/WC/matches"
+SHEET_KEY = "1n8UR-kAVKeIuTTfl6AQPYeLlOy_iEruvdRSfYykIO8E"
 
-# --- OFFICIAL 2026 GROUP TEAM CONFIGURATIONS ---
 groups = {
     "Group A": ["Mexico", "South Africa", "South Korea", "Czechia"],
     "Group B": ["Canada", "Switzerland", "Qatar", "Bosnia"],
@@ -44,7 +45,7 @@ INITIAL_SEED_STANDINGS = {
 
 CLEAN_TEAM_MAP = {
     "mexico": "Mexico", "southafrica": "South Africa", "southkorea": "South Korea",
-    "korearepublic": "South Korea", "republicofkorea": "South Korea", "czechia": "Czechia", 
+    "korearepublic": "South Korea", "republicofkorea": "South Korea", "czechia": "Czechia",
     "czechrepublic": "Czechia", "canada": "Canada", "switzerland": "Switzerland", "qatar": "Qatar",
     "bosnia": "Bosnia", "bosniaandherzegovina": "Bosnia", "bosniaherzegovina": "Bosnia",
     "brazil": "Brazil", "morocco": "Morocco", "haiti": "Haiti",
@@ -94,19 +95,61 @@ def standardize_string(val):
     cleaned = re.sub(r'[\s\xa0\u200b\u200c\u200d]+', '', str(val))
     return cleaned.lower().replace("-", "").replace("_", "").replace(".", "")
 
-def connect_to_sheet(tab_name="sheet1"):
+def connect_to_sheet(tab_name="sheet1", retries=3):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = st.secrets["gcp_service_account"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    spreadsheet = client.open_by_key("1n8UR-kAVKeIuTTfl6AQPYeLlOy_iEruvdRSfYykIO8E")
-    if tab_name == "Knockout_Picks":
-        try: return spreadsheet.worksheet("Knockout_Picks")
-        except gspread.exceptions.WorksheetNotFound:
-            new_tab = spreadsheet.add_worksheet(title="Knockout_Picks", rows="1000", cols="7")
-            new_tab.append_row(["Timestamp", "Name", "Match_ID", "Home_Score", "Away_Score", "Winner", "Stage"])
-            return new_tab
-    return spreadsheet.sheet1 if tab_name == "sheet1" else spreadsheet.worksheet(tab_name)
+    for attempt in range(retries):
+        try:
+            creds_dict = st.secrets["gcp_service_account"]
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            client = gspread.authorize(creds)
+            spreadsheet = client.open_by_key(SHEET_KEY)
+            if tab_name == "Knockout_Picks":
+                try:
+                    return spreadsheet.worksheet("Knockout_Picks")
+                except gspread.exceptions.WorksheetNotFound:
+                    new_tab = spreadsheet.add_worksheet(title="Knockout_Picks", rows="1000", cols="7")
+                    new_tab.append_row(["Timestamp", "Name", "Match_ID", "Home_Score", "Away_Score", "Winner", "Stage"])
+                    return new_tab
+            return spreadsheet.sheet1 if tab_name == "sheet1" else spreadsheet.worksheet(tab_name)
+        except gspread.exceptions.APIError as e:
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
+            else:
+                raise e
+
+def get_registered_players(retries=3):
+    for attempt in range(retries):
+        try:
+            sheet = connect_to_sheet("sheet1")
+            records = sheet.get_all_records()
+            if records:
+                df = pd.DataFrame(records)
+                if len(df.columns) >= 2:
+                    return sorted(list(df['Name'].astype(str).str.strip().unique()))
+            return []
+        except gspread.exceptions.APIError:
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                st.error("⚠️ Could not load player list from Google Sheets. Please refresh the page.")
+                return []
+        except Exception as e:
+            st.error(f"⚠️ Unexpected error loading players: {e}")
+            return []
+
+def save_pick_with_retry(ko_sheet, row_i, new_row, retries=3):
+    for attempt in range(retries):
+        try:
+            if row_i != -1:
+                ko_sheet.update(range_name=f"A{row_i}:G{row_i}", values=[new_row])
+            else:
+                ko_sheet.append_row(new_row)
+            return True
+        except gspread.exceptions.APIError:
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                return False
 
 @st.cache_data(ttl=10800)
 def fetch_and_merge_api_data():
@@ -139,17 +182,8 @@ def fetch_live_matches_api():
     try:
         response = requests.get(f"{MATCHES_URL}?season=2026", headers=headers, timeout=12)
         if response.status_code == 200: return response.json().get('matches', [])
-    except: pass
-    return []
-
-def get_registered_players():
-    try:
-        sheet = connect_to_sheet("sheet1")
-        records = sheet.get_all_records()
-        if records:
-            df = pd.DataFrame(records)
-            if len(df.columns) >= 2: return sorted(list(df[df.columns[1]].astype(str).str.strip().unique()))
-    except: pass
+    except Exception as e:
+        st.warning(f"⚠️ Could not fetch live match data: {e}")
     return []
 
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
@@ -162,7 +196,7 @@ with st.sidebar:
         selected_dropdown_name = st.selectbox("Identify Profile Name:", ["-- Select Profile --"] + registered_players)
         user_name = selected_dropdown_name if selected_dropdown_name != "-- Select Profile --" else ""
     else:
-        st.warning("⚠️ No names detected on registration sheet.")
+        st.warning("⚠️ Could not load player list. Try refreshing or click Sync below.")
         user_name = ""
     st.divider()
     if st.button("🔄 Clear System Cache / Sync Data", use_container_width=True):
@@ -177,18 +211,24 @@ if page == "Knockout Predictions":
         st.info("👈 Authenticate to open your bracket.")
     else:
         st.success(f"Log-In User: **{user_name}**")
-        ko_sheet = connect_to_sheet("Knockout_Picks")
+        try:
+            ko_sheet = connect_to_sheet("Knockout_Picks")
+        except Exception as e:
+            st.error(f"❌ Could not connect to picks sheet: {e}. Please refresh and try again.")
+            st.stop()
+
         user_ko_df = pd.DataFrame(ko_sheet.get_all_records())
-        if not user_ko_df.empty: user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
+        if not user_ko_df.empty:
+            user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
 
         raw_matches = fetch_live_matches_api()
-        
+
         def draw_match_ui(tag, home, away, is_locked, match_no, date, stage):
             exist_row = user_ko_df[user_ko_df['Match_ID'].astype(str) == tag] if not user_ko_df.empty else pd.DataFrame()
             default_h = int(exist_row['Home_Score'].values[0]) if not exist_row.empty else 0
             default_a = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
             default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home
-            
+
             with st.container(border=True):
                 if date: st.caption(f"📅 Match {match_no} • {date}")
                 c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
@@ -205,14 +245,16 @@ if page == "Knockout Predictions":
                     else:
                         chosen_winner = home if h_score > a_score else away
                         st.markdown(f"<br><p><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
-                
+
                 st.session_state.ko_winners[tag] = chosen_winner
                 if not is_locked and st.button("Lock Score", key=f"btn_s_{tag}"):
                     row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
                     new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
-                    if row_i != -1: ko_sheet.update(range_name=f"A{row_i}:G{row_i}", values=[new_row])
-                    else: ko_sheet.append_row(new_row)
-                    st.toast("Saved!")
+                    success = save_pick_with_retry(ko_sheet, row_i, new_row)
+                    if success:
+                        st.toast("✅ Saved!")
+                    else:
+                        st.error("❌ Failed to save after 3 attempts. Please try again.")
 
         st.subheader("1️⃣ Round of 32")
         api_r32 = sorted([m for m in raw_matches if m.get('stage') == "ROUND_OF_32"], key=lambda x: x.get('utcDate', ''))
@@ -231,14 +273,21 @@ if page == "Knockout Predictions":
         st.subheader("🏁 Tie-Breaker")
         tb_val = st.number_input("Total goals in knockout stage:", min_value=0, value=int(user_ko_df[user_ko_df['Match_ID'] == 'TIE_BREAKER']['Home_Score'].iloc[0] if 'TIE_BREAKER' in user_ko_df['Match_ID'].values else 0))
         if st.button("Submit Tie-Breaker"):
-            ko_sheet.append_row([datetime.now().strftime("%Y-%m-%d"), user_name, "TIE_BREAKER", tb_val, 0, "N/A", "TIE"])
-            st.success("Tie-breaker submitted!")
+            success = save_pick_with_retry(ko_sheet, -1, [datetime.now().strftime("%Y-%m-%d"), user_name, "TIE_BREAKER", tb_val, 0, "N/A", "TIE"])
+            if success:
+                st.success("Tie-breaker submitted!")
+            else:
+                st.error("❌ Failed to save tie-breaker. Please try again.")
 
 elif page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
     live_matches = fetch_live_matches_api()
-    all_picks = pd.DataFrame(connect_to_sheet("Knockout_Picks").get_all_records())
-    
+    try:
+        all_picks = pd.DataFrame(connect_to_sheet("Knockout_Picks").get_all_records())
+    except Exception as e:
+        st.error(f"❌ Could not load picks: {e}")
+        st.stop()
+
     def calc_score(row):
         score = 0
         u_picks = all_picks[all_picks['Name'].str.lower() == str(row['Name']).lower()]
@@ -253,9 +302,12 @@ elif page == "Leaderboard":
                 if actual_winner == pick_winner: score += 1
         return score
 
-    df = pd.DataFrame(connect_to_sheet("sheet1").get_all_records())
-    df['Points'] = df.apply(calc_score, axis=1)
-    st.table(df[['Name', 'Points']].sort_values(by='Points', ascending=False))
+    try:
+        df = pd.DataFrame(connect_to_sheet("sheet1").get_all_records())
+        df['Points'] = df.apply(calc_score, axis=1)
+        st.table(df[['Name', 'Points']].sort_values(by='Points', ascending=False))
+    except Exception as e:
+        st.error(f"❌ Could not load leaderboard: {e}")
 
 elif page == "Rules & Chat Forum":
     st.title("📜 Pool Rules")
