@@ -9,6 +9,7 @@ import re
 # --- CONFIGURATION ---
 API_KEY = '63ba1313af494222bddfb7f14879b920' 
 BASE_URL = "https://api.football-data.org/v4/competitions/WC/standings"
+MATCHES_URL = "https://api.football-data.org/v4/competitions/WC/matches"
 
 # --- DATA: OFFICIAL 2026 GROUPS ---
 groups = {
@@ -76,6 +77,16 @@ def connect_to_sheet(tab_name="sheet1"):
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     spreadsheet = client.open("World_Cup_Pool_Data")
+    
+    if tab_name == "Knockout_Picks":
+        try:
+            return spreadsheet.worksheet("Knockout_Picks")
+        except gspread.exceptions.WorksheetNotFound:
+            # Auto-create knockout predictions sheet with correct headers if missing
+            new_tab = spreadsheet.add_worksheet(title="Knockout_Picks", rows="1000", cols="7")
+            new_tab.append_row(["Timestamp", "Name", "Match_ID", "Home_Score", "Away_Score", "Winner", "Stage"])
+            return new_tab
+            
     if tab_name == "sheet1":
         return spreadsheet.sheet1
     return spreadsheet.worksheet(tab_name)
@@ -102,7 +113,6 @@ def fetch_and_merge_api_data():
     for block in data['standings']:
         clean_group_key = None
         
-        # Strategy 1: Attempt Regex matching on the 'group' field text
         raw_group_name = block.get('group')
         if raw_group_name:
             group_str = str(raw_group_name).upper()
@@ -111,7 +121,6 @@ def fetch_and_merge_api_data():
                 letter = match.group(1) or match.group(2)
                 clean_group_key = f"Group {letter}"
         
-        # Strategy 2 (Fallback): Auto-deduce group based on the teams present in the table
         if not clean_group_key or clean_group_key not in INITIAL_SEED_STANDINGS:
             for row in block.get('table', []):
                 team_node = row.get('team', {})
@@ -120,7 +129,6 @@ def fetch_and_merge_api_data():
                     lookup = standardize_string(raw_name)
                     clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
                     
-                    # Search across official configurations to find where this team belongs
                     for g_key, g_teams in groups.items():
                         if clean_name in g_teams:
                             clean_group_key = g_key
@@ -128,7 +136,6 @@ def fetch_and_merge_api_data():
                 if clean_group_key:
                     break
                     
-        # Process team ordering if the group was successfully identified
         if clean_group_key in INITIAL_SEED_STANDINGS:
             ordered_teams = []
             for row in block.get('table', []):
@@ -139,7 +146,6 @@ def fetch_and_merge_api_data():
                     clean_name = CLEAN_TEAM_MAP.get(lookup, str(raw_name).strip())
                     ordered_teams.append(clean_name)
             
-            # Fill out missing teams using seed standings
             for team in INITIAL_SEED_STANDINGS[clean_group_key]:
                 if team not in ordered_teams:
                     ordered_teams.append(team)
@@ -152,13 +158,49 @@ def fetch_and_merge_api_data():
         
     return updated_map
 
+@st.cache_data(ttl=1800)
+def fetch_live_matches_api():
+    headers = {'X-Auth-Token': API_KEY}
+    try:
+        response = requests.get(f"{MATCHES_URL}?season=2026", headers=headers, timeout=12)
+        if response.status_code == 200:
+            return response.json().get('matches', [])
+    except:
+        pass
+    return []
+
+# --- FETCH REGISTERED USER LIST FOR DROPDOWN ---
+def get_registered_players():
+    try:
+        sheet = connect_to_sheet("sheet1")
+        records = sheet.get_all_records()
+        if records:
+            df = pd.DataFrame(records)
+            if len(df.columns) >= 2:
+                name_col = df.columns[1]
+                return sorted(list(df[name_col].astype(str).str.strip().unique()))
+    except:
+        pass
+    return []
+
+registered_players = get_registered_players()
+
 # --- APP UI SETUP ---
-st.set_page_config(page_title="2026 WC Portal", layout="wide")
-page = st.sidebar.radio("Navigation", ["Leaderboard", "Make Predictions", "Rules & Chat Forum"])
+page = st.sidebar.radio("Navigation", ["Knockout Predictions", "Leaderboard", "Group Stage Predictions (Closed)", "Rules & Chat Forum"])
 
 with st.sidebar:
     st.header("Player Info")
-    user_name = st.text_input("Full Name:")
+    
+    # Combined Dropdown + Text fallback solution for finding names dynamically
+    if registered_players:
+        selected_dropdown_name = st.selectbox("Select Your Name:", ["-- Select Existing Player --"] + registered_players)
+        if selected_dropdown_name != "-- Select Existing Player --":
+            user_name = selected_dropdown_name
+        else:
+            user_name = st.text_input("Or Type Full Name:")
+    else:
+        user_name = st.text_input("Full Name:")
+        
     st.divider()
     st.markdown("### 📸 Official Instagram")
     st.write("Make sure you follow the official instagram **@2026fifawcp** for updates.")
@@ -174,8 +216,131 @@ with st.sidebar:
             del st.session_state["api_error_details"]
         st.rerun()
 
-# --- PAGE 1: LEADERBOARD ---
-if page == "Leaderboard":
+# --- PAGE 1: KNOCKOUT PREDICTIONS ---
+if page == "Knockout Predictions":
+    st.title("🏆 Knockout Round Predictions")
+    st.markdown("As matchups are finalized by live match schedules, enter your scores below. You can log back in anytime to update entries before games kickoff.")
+    
+    if not user_name or user_name.strip() == "":
+        st.warning("👈 Please select or enter your Full Name in the sidebar to view or edit knockout picks.")
+    else:
+        st.success(f"Active Session Profile: **{user_name}**")
+        
+        # Load existing choices from Google Sheets
+        ko_records = []
+        try:
+            ko_sheet = connect_to_sheet("Knockout_Picks")
+            ko_records = ko_sheet.get_all_records()
+        except Exception as e:
+            st.error(f"Could not connect to Knockout Sheets database: {e}")
+            
+        user_ko_df = pd.DataFrame(ko_records)
+        if not user_ko_df.empty:
+            user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
+
+        # Pull match schedules
+        raw_matches = fetch_live_matches_api()
+        knockout_stages = ["ROUND_OF_32", "ROUND_OF_16", "QUARTER_FINALS", "SEMI_FINALS", "FINAL"]
+        
+        # Filter matches where actual opponents are confirmed
+        active_fixtures = []
+        for m in raw_matches:
+            if m.get('stage') in knockout_stages:
+                h_team = m.get('homeTeam', {}).get('name')
+                a_team = m.get('awayTeam', {}).get('name')
+                if h_team and a_team:
+                    active_fixtures.append(m)
+
+        # Fallback simulation fixtures if API doesn't contain active knockout stages yet
+        if not active_fixtures:
+            st.info("💡 Waiting on confirmed match calculations from the live API feed. Displaying upcoming scheduled openers for preview testing:")
+            active_fixtures = [
+                {"id": 7301, "stage": "ROUND_OF_32", "status": "TIMED", "homeTeam": {"name": "Germany"}, "awayTeam": {"name": "Ecuador"}},
+                {"id": 7302, "stage": "ROUND_OF_32", "status": "TIMED", "homeTeam": {"name": "South Korea"}, "awayTeam": {"name": "Canada"}},
+                {"id": 7303, "stage": "ROUND_OF_32", "status": "TIMED", "homeTeam": {"name": "Mexico"}, "awayTeam": {"name": "Bosnia"}},
+            ]
+
+        # Group fixtures cleanly by tournament tier
+        for stage_group in knockout_stages:
+            stage_matches = [m for m in active_fixtures if m.get('stage') == stage_group]
+            if not stage_matches:
+                continue
+                
+            st.markdown(f"### 📦 {stage_group.replace('_', ' ')}")
+            
+            for m in stage_matches:
+                m_id = str(m.get('id'))
+                h_name = m.get('homeTeam', {}).get('name')
+                a_name = m.get('awayTeam', {}).get('name')
+                is_locked = m.get('status') not in ["TIMED", "SCHEDULED"]
+                
+                # Fetch clean structural names via mapped standardization dictionaries
+                lookup_h = standardize_string(h_name)
+                lookup_a = standardize_string(a_name)
+                clean_h = CLEAN_TEAM_MAP.get(lookup_h, h_name)
+                clean_a = CLEAN_TEAM_MAP.get(lookup_a, a_name)
+                
+                # Retrieve saved historic data records if matching values exist
+                exist_row = user_ko_df[user_ko_df['Match_ID'].astype(str) == m_id] if not user_ko_df.empty else pd.DataFrame()
+                
+                default_h_score = int(exist_row['Home_Score'].values[0]) if not exist_row.empty else 0
+                default_a_score = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
+                default_winner = str(exist_row['Winner'].values[0]) if not exist_row.empty else clean_h
+                
+                # Visual box module layout
+                with st.container(border=True):
+                    c1, c2, c3, c4 = st.columns([3, 2, 2, 3])
+                    
+                    with c1:
+                        st.markdown(f"#### {clean_h}")
+                        h_score = st.number_input("Score", min_value=0, max_value=20, value=default_h_score, key=f"h_{m_id}", disabled=is_locked)
+                    
+                    with c2:
+                        st.markdown("<h3 style='text-align: center; margin-top: 25px;'>VS</h3>", unsafe_allow_html=True)
+                        
+                    with c3:
+                        st.markdown(f"#### {clean_a}")
+                        a_score = st.number_input("Score", min_value=0, max_value=20, value=default_a_score, key=f"a_{m_id}", disabled=is_locked)
+                    
+                    with c4:
+                        st.markdown("#### Outcome Target")
+                        if h_score == a_score:
+                            winner_choices = [clean_h, clean_a]
+                            def_idx = winner_choices.index(default_winner) if default_winner in winner_choices else 0
+                            final_winner = st.selectbox("Advances via PKs", options=winner_choices, index=def_idx, key=f"w_{m_id}", disabled=is_locked)
+                        else:
+                            final_winner = clean_h if h_score > a_score else clean_a
+                            st.info(f"👉 Winner: {final_winner}")
+                    
+                    # Individual item persistence router updates
+                    if not is_locked:
+                        if st.button("Save Prediction Entry", key=f"btn_{m_id}"):
+                            try:
+                                ko_sheet = connect_to_sheet("Knockout_Picks")
+                                full_ko_records = ko_sheet.get_all_records()
+                                
+                                target_row_idx = -1
+                                for idx, r in enumerate(full_ko_records):
+                                    if str(r.get('Name')).strip().lower() == user_name.strip().lower() and str(r.get('Match_ID')) == m_id:
+                                        target_row_idx = idx + 2
+                                        break
+                                
+                                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                new_row = [timestamp, user_name.strip(), m_id, int(h_score), int(a_score), final_winner, stage_group]
+                                
+                                if target_row_idx != -1:
+                                    ko_sheet.update(range_name=f"A{target_row_idx}:G{target_row_idx}", values=[new_row])
+                                else:
+                                    ko_sheet.append_row(new_row)
+                                    
+                                st.toast(f"Saved: {clean_h} vs {clean_a} choice captured!", icon="✅")
+                            except Exception as ex:
+                                st.error(f"Error parsing connection parameters: {ex}")
+                    else:
+                        st.caption("🔒 Match has commenced. Entry options frozen.")
+
+# --- PAGE 2: LEADERBOARD ---
+elif page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
     with st.spinner("Calculating live scores..."):
         try:
@@ -193,6 +358,17 @@ if page == "Leaderboard":
             is_using_memory_fallback = True
             
         live_standings_map = st.session_state["automated_live_cache"]
+        
+        # Load match data calculations for knockout scores
+        live_matches_list = fetch_live_matches_api()
+        
+        all_ko_picks = []
+        try:
+            ko_sheet = connect_to_sheet("Knockout_Picks")
+            all_ko_picks = ko_sheet.get_all_records()
+        except:
+            pass
+        ko_df_all = pd.DataFrame(all_ko_picks)
         
         try:
             sheet = connect_to_sheet()
@@ -238,6 +414,7 @@ if page == "Leaderboard":
                         return 0
                     total_points = 0
                     
+                    # 1. Calculate Group Points
                     group_mapping = {
                         'A': 'Group A', 'B': 'Group B', 'C': 'Group C', 'D': 'Group D',
                         'E': 'Group E', 'F': 'Group F', 'G': 'Group G', 'H': 'Group H',
@@ -258,7 +435,44 @@ if page == "Leaderboard":
                         if p2 == current_live_order[1]: total_points += 1
                         if p3 == current_live_order[2]: total_points += 1
                         if p4 == current_live_order[3]: total_points += 1
+                    
+                    # 2. Add Mapped Knockout Matrix Points
+                    if not ko_df_all.empty and live_matches_list:
+                        u_name = str(row.get('Name')).strip().lower()
+                        user_subset = ko_df_all[ko_df_all['Name'].astype(str).str.lower() == u_name]
+                        
+                        for _, ko_pick in user_subset.iterrows():
+                            match_id_target = str(ko_pick.get('Match_ID'))
+                            api_match = next((m for m in live_matches_list if str(m.get('id')) == match_id_target), None)
+                            
+                            if api_match and api_match.get('status') == 'FINISHED':
+                                api_score = api_match.get('score', {})
+                                api_ft = api_score.get('fullTime', {})
+                                
+                                act_h = api_ft.get('home')
+                                act_a = api_ft.get('away')
+                                act_winner_side = api_score.get('winner') # HOME_TEAM, AWAY_TEAM
+                                
+                                pred_h = ko_pick.get('Home_Score')
+                                pred_a = ko_pick.get('Away_Score')
+                                pred_winner = str(ko_pick.get('Winner')).strip().lower()
+                                
+                                # Micro accuracy checks
+                                if str(pred_h) == str(act_h): total_points += 1
+                                if str(pred_a) == str(act_a): total_points += 1
+                                
+                                # Direct winner match validation checks
+                                act_winner_name = ""
+                                if act_winner_side == "HOME_TEAM":
+                                    act_winner_name = api_match.get('homeTeam', {}).get('name')
+                                elif act_winner_side == "AWAY_TEAM":
+                                    act_winner_name = api_match.get('awayTeam', {}).get('name')
                                     
+                                if act_winner_name:
+                                    clean_act_winner = CLEAN_TEAM_MAP.get(standardize_string(act_winner_name), act_winner_name).strip().lower()
+                                    if pred_winner == clean_act_winner:
+                                        total_points += 1
+                                        
                     return total_points
 
                 df['Points'] = df.apply(calculate_live_user_score, axis=1)
@@ -295,53 +509,18 @@ if page == "Leaderboard":
         except Exception as e:
             st.error(f"Leaderboard Error: {e}")
 
-# --- PAGE 2: PREDICTIONS ---
-elif page == "Make Predictions":
-    st.title("🏆 2026 World Cup Predictions")
-    st.info("Rank teams 1-4. Real-time points are awarded based on active live standings!")
-    
-    all_picks = []
-    summary_data = [] 
-    cols = st.columns(4) 
-    for i, (group_name, teams) in enumerate(groups.items()):
-        with cols[i % 4]:
-            st.markdown(f"### {group_name}")
-            r1 = st.selectbox("1st", ["--"] + teams, key=f"{group_name}_1")
-            rem2 = [t for t in teams if t != r1]
-            r2 = st.selectbox("2nd", ["--"] + rem2, key=f"{group_name}_2")
-            rem3 = [t for t in rem2 if t != r2]
-            r3 = st.selectbox("3rd", ["--"] + rem3, key=f"{group_name}_3")
-            rem4 = [t for t in rem3 if t != r3]
-            r4 = st.selectbox("4th", ["--"] + rem4, key=f"{group_name}_4")
-            
-            all_picks.extend([r1, r2, r3, r4])
-            summary_data.append({"Group": group_name, "1st": r1, "2nd": r2, "3rd": r3, "4th": r4})
+# --- PAGE 3: GROUP STAGE PREDICTIONS (CLOSED) ---
+elif page == "Group Stage Predictions (Closed)":
+    st.title("🏆 Group Stage Predictions")
+    st.warning("🔒 The selection window for group pairings is closed. Existing points tracking datasets have locked to secure ongoing pool mechanics.")
 
-    if st.button("Submit Rankings", use_container_width=True):
-        if not user_name:
-            st.error("Enter your name in the sidebar.")
-        elif "--" in all_picks:
-            st.error("Complete all rankings.")
-        else:
-            try:
-                sheet = connect_to_sheet()
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                sheet.append_row([timestamp, user_name] + all_picks + ["Pending"])
-                st.success("Predictions Saved!")
-                
-                df_user = pd.DataFrame(summary_data)
-                csv = df_user.to_csv(index=False).encode('utf-8')
-                st.download_button(label="Download My Picks (.csv)", data=csv, file_name=f"{user_name}_WC2026_Picks.csv", mime="text/csv")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Error saving to Google Sheets: {e}")
-
-# --- PAGE 3: RULES & CHAT FORUM ---
+# --- PAGE 4: RULES & CHAT FORUM ---
 elif page == "Rules & Chat Forum":
     st.title("📜 Pool Rules & Payment")
     with st.expander("View Full Rules & Payment Details", expanded=True):
         st.warning("⚠️ **Deadline:** All picks must be submitted before June 11, 2026.")
         st.write("**Scoring System:** Each correct position pick = 1 point.")
+        st.write("**Knockout Rounds:** 1 point for the correct match outcome (including penalty results) + 1 point for each exact individual team score prediction.")
         st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
         st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
         st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
