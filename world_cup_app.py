@@ -6,12 +6,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import re
 
-# --- CONFIGURATION ---
+# --- GLOBAL POOL CONFIGURATION ---
 API_KEY = '63ba1313af494222bddfb7f14879b920' 
 BASE_URL = "https://api.football-data.org/v4/competitions/WC/standings"
 MATCHES_URL = "https://api.football-data.org/v4/competitions/WC/matches"
 
-# --- DATA: OFFICIAL 2026 GROUPS ---
+# --- OFFICIAL 2026 GROUP TEAM CONFIGURATIONS ---
 groups = {
     "Group A": ["Mexico", "South Africa", "South Korea", "Czechia"],
     "Group B": ["Canada", "Switzerland", "Qatar", "Bosnia"],
@@ -27,7 +27,6 @@ groups = {
     "Group L": ["England", "Croatia", "Ghana", "Panama"]
 }
 
-# --- HARDCODED SEED STANDINGS ---
 INITIAL_SEED_STANDINGS = {
     "Group A": ["Mexico", "South Korea", "Czechia", "South Africa"],
     "Group B": ["Switzerland", "Canada", "Qatar", "Bosnia"],
@@ -43,7 +42,6 @@ INITIAL_SEED_STANDINGS = {
     "Group L": ["England", "Ghana", "Panama", "Croatia"]
 }
 
-# --- UNIVERSAL CLEANER MAP ---
 CLEAN_TEAM_MAP = {
     "mexico": "Mexico", "southafrica": "South Africa", "southkorea": "South Korea",
     "korearepublic": "South Korea", "republicofkorea": "South Korea", "czechia": "Czechia", 
@@ -65,55 +63,58 @@ CLEAN_TEAM_MAP = {
     "england": "England", "croatia": "Croatia", "ghana": "Ghana", "panama": "Panama"
 }
 
-# --- CHRONOLOGICAL KNOCKOUT OVERRIDES ---
-# Maps placeholder entries to your verified schedule until the API database locks them in.
-KNOWN_R32_FALLBACKS = [
-    ("South Africa", "Canada"),        # 1. Sun, 28 Jun, 21:00
-    ("Brazil", "Japan"),               # 2. Mon, 29 Jun, 19:00
-    ("Germany", "TBD"),                # 3. Mon, 29 Jun, 22:30
-    ("Netherlands", "Morocco"),        # 4. Tue, 30 Jun, 03:00
-    ("Côte d'Ivoire", "TBD"),          # 5. Tue, 30 Jun, 19:00
-    ("TBD", "TBD"),                    # 6. Tue, 30 Jun, 23:00
-    ("Mexico", "TBD"),                 # 7. Wed, 1 Jul, 03:00
-    ("TBD", "TBD"),                    # 8. Wed, 1 Jul, 18:00
-    ("TBD", "TBD"),                    # 9. Wed, 1 Jul, 22:00
-    ("USA", "Bosnia and Herzegovina"), # 10. Thu, 2 Jul, 02:00
-    ("TBD", "TBD"),                    # 11. Thu, 2 Jul, 21:00
-    ("TBD", "TBD"),                    # 12. Fri, 3 Jul, 01:00
-    ("Switzerland", "TBD"),            # 13. Fri, 3 Jul, 05:00
-    ("Australia", "TBD"),              # 14. Fri, 3 Jul, 20:00
-    ("Argentina", "TBD"),              # 15. Sat, 4 Jul, 00:00
-    ("TBD", "TBD")                     # 16. Sat, 4 Jul, 03:30
+# --- MASTER CHRONOLOGICAL TEMPLATE (Your Known Matches) ---
+FIXED_R32_MATCHES = [
+    {"match_no": 1, "date": "Sun, 28 Jun, 21:00", "home": "South Africa", "away": "Canada", "id_tag": "M73"},
+    {"match_no": 2, "date": "Mon, 29 Jun, 19:00", "home": "Brazil", "away": "Japan", "id_tag": "M74"},
+    {"match_no": 3, "date": "Mon, 29 Jun, 22:30", "home": "Germany", "away": "TBD", "id_tag": "M75"},
+    {"match_no": 4, "date": "Tue, 30 Jun, 03:00", "home": "Netherlands", "away": "Morocco", "id_tag": "M76"},
+    {"match_no": 5, "date": "Tue, 30 Jun, 19:00", "home": "Côte d'Ivoire", "away": "TBD", "id_tag": "M77"},
+    {"match_no": 6, "date": "Tue, 30 Jun, 23:00", "home": "TBD", "away": "TBD", "id_tag": "M78"},
+    {"match_no": 7, "date": "Wed, 1 Jul, 03:00", "home": "Mexico", "away": "TBD", "id_tag": "M79"},
+    {"match_no": 8, "date": "Wed, 1 Jul, 18:00", "home": "TBD", "away": "TBD", "id_tag": "M80"},
+    {"match_no": 9, "date": "Wed, 1 Jul, 22:00", "home": "TBD", "away": "TBD", "id_tag": "M81"},
+    {"match_no": 10, "date": "Thu, 2 Jul, 02:00", "home": "USA", "away": "Bosnia and Herzegovina", "id_tag": "M82"},
+    {"match_no": 11, "date": "Thu, 2 Jul, 21:00", "home": "TBD", "away": "TBD", "id_tag": "M83"},
+    {"match_no": 12, "date": "Fri, 3 Jul, 01:00", "home": "TBD", "away": "TBD", "id_tag": "M84"},
+    {"match_no": 13, "date": "Fri, 3 Jul, 05:00", "home": "Switzerland", "away": "TBD", "id_tag": "M85"},
+    {"match_no": 14, "date": "Fri, 3 Jul, 20:00", "home": "Australia", "away": "TBD", "id_tag": "M86"},
+    {"match_no": 15, "date": "Sat, 4 Jul, 00:00", "home": "Argentina", "away": "TBD", "id_tag": "M87"},
+    {"match_no": 16, "date": "Sat, 4 Jul, 03:30", "home": "TBD", "away": "TBD", "id_tag": "M88"}
 ]
 
+# --- BRACKET LINKAGE PATHS (How winners cascade forward) ---
+BRACKET_MAPPING = {
+    "ROUND_OF_16": {
+        "M89": ("M73", "M76"),  # Winner Match 1 vs Winner Match 4
+        "M90": ("M74", "M77"),  # Winner Match 2 vs Winner Match 5
+        "M91": ("M75", "M82"),  # Winner Match 3 vs Winner Match 10
+        "M92": ("M78", "M79"),
+        "M93": ("M80", "M81"),
+        "M94": ("M83", "M84"),
+        "M95": ("M85", "M86"),
+        "M96": ("M87", "M88"),
+    },
+    "QUARTER_FINALS": {
+        "M97": ("M89", "M90"),
+        "M98": ("M91", "M92"),
+        "M99": ("M93", "M94"),
+        "M100": ("M95", "M96"),
+    },
+    "SEMI_FINALS": {
+        "M101": ("M97", "M98"),
+        "M102": ("M99", "M100"),
+    },
+    "FINAL": {
+        "M104": ("M101", "M102")
+    }
+}
+
+# --- COMPONENT LOGIC & UTILITIES ---
 def standardize_string(val):
-    if val is None:
-        return ""
+    if val is None: return ""
     cleaned = re.sub(r'[\s\xa0\u200b\u200c\u200d]+', '', str(val))
     return cleaned.lower().replace("-", "").replace("_", "").replace(".", "")
-
-def get_resolved_team_name(team_node, stage, match_index, side):
-    """Resolves names using real data first, our fallbacks second, and placeholders last."""
-    if not team_node:
-        raw_name = ""
-    else:
-        raw_name = team_node.get('name') or team_node.get('shortName') or ""
-        
-    lookup = standardize_string(raw_name)
-    
-    # Identify if the API is using a placeholder string
-    is_placeholder = any(x in raw_name.lower() for x in ["winner", "runner-up", "to be", "tbd", "placeholder", "best 3rd"]) or raw_name == ""
-    
-    # If the API returns a real team country name, immediately let it take priority
-    if not is_placeholder:
-        return CLEAN_TEAM_MAP.get(lookup, raw_name)
-        
-    # If it is a placeholder, use our verified fallback track
-    if stage == "ROUND_OF_32" and 0 <= match_index < len(KNOWN_R32_FALLBACKS):
-        pair = KNOWN_R32_FALLBACKS[match_index]
-        return pair[0] if side == 'home' else pair[1]
-        
-    return raw_name if raw_name else "TBD"
 
 def connect_to_sheet(tab_name="sheet1"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -129,42 +130,31 @@ def connect_to_sheet(tab_name="sheet1"):
             new_tab = spreadsheet.add_worksheet(title="Knockout_Picks", rows="1000", cols="7")
             new_tab.append_row(["Timestamp", "Name", "Match_ID", "Home_Score", "Away_Score", "Winner", "Stage"])
             return new_tab
-            
-    if tab_name == "sheet1":
-        return spreadsheet.sheet1
-    return spreadsheet.worksheet(tab_name)
-
-if "automated_live_cache" not in st.session_state:
-    st.session_state["automated_live_cache"] = INITIAL_SEED_STANDINGS
+    return spreadsheet.sheet1 if tab_name == "sheet1" else spreadsheet.worksheet(tab_name)
 
 @st.cache_data(ttl=10800)
 def fetch_and_merge_api_data():
     headers = {'X-Auth-Token': API_KEY}
     response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
-    if response.status_code != 200:
-        raise Exception(f"HTTP Error {response.status_code}: {response.text}")
+    if response.status_code != 200: raise Exception(f"HTTP Error {response.status_code}")
     data = response.json()
     updated_map = {}
-    for block in data['standings']:
+    for block in data.get('standings', []):
         clean_group_key = None
         raw_group_name = block.get('group')
         if raw_group_name:
             group_str = str(raw_group_name).upper()
             match = re.search(r'\b([A-L])\b|GROUP[\s_-]*([A-L])', group_str)
-            if match:
-                letter = match.group(1) or match.group(2)
-                clean_group_key = f"Group {letter}"
+            if match: clean_group_key = f"Group {match.group(1) or match.group(2)}"
         if clean_group_key in INITIAL_SEED_STANDINGS:
             ordered_teams = []
             for row in block.get('table', []):
                 team_node = row.get('team', {})
                 raw_name = team_node.get('shortName') or team_node.get('name')
-                if raw_name:
-                    ordered_teams.append(CLEAN_TEAM_MAP.get(standardize_string(raw_name), raw_name))
+                if raw_name: ordered_teams.append(CLEAN_TEAM_MAP.get(standardize_string(raw_name), raw_name))
             for team in INITIAL_SEED_STANDINGS[clean_group_key]:
                 if team not in ordered_teams: ordered_teams.append(team)
-            if len(ordered_teams) >= 4:
-                updated_map[clean_group_key] = ordered_teams[:4]
+            if len(ordered_teams) >= 4: updated_map[clean_group_key] = ordered_teams[:4]
     return updated_map
 
 @st.cache_data(ttl=1800)
@@ -172,10 +162,8 @@ def fetch_live_matches_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
         response = requests.get(f"{MATCHES_URL}?season=2026", headers=headers, timeout=12)
-        if response.status_code == 200:
-            return response.json().get('matches', [])
-    except:
-        pass
+        if response.status_code == 200: return response.json().get('matches', [])
+    except: pass
     return []
 
 def get_registered_players():
@@ -184,132 +172,197 @@ def get_registered_players():
         records = sheet.get_all_records()
         if records:
             df = pd.DataFrame(records)
-            if len(df.columns) >= 2:
-                return sorted(list(df[df.columns[1]].astype(str).str.strip().unique()))
-    except:
-        pass
+            if len(df.columns) >= 2: return sorted(list(df[df.columns[1]].astype(str).str.strip().unique()))
+    except: pass
     return []
 
-# --- APP SETUP ---
+# --- MAIN APP LAYOUT SETUP ---
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
-page = st.sidebar.radio("Navigation", ["Knockout Predictions", "Leaderboard", "Group Predictions (Closed)", "Rules & Chat Forum"])
+page = st.sidebar.radio("Navigation Menu", ["Knockout Predictions", "Leaderboard", "Group Predictions (Closed)", "Rules & Chat Forum"])
 registered_players = get_registered_players()
 
 with st.sidebar:
-    st.header("Player Info")
+    st.header("Player Login")
     if registered_players:
-        selected_dropdown_name = st.selectbox("Select Your Name:", ["-- Select Existing Player --"] + registered_players)
-        user_name = selected_dropdown_name if selected_dropdown_name != "-- Select Existing Player --" else ""
+        selected_dropdown_name = st.selectbox("Identify Profile Name:", ["-- Select Profile --"] + registered_players)
+        user_name = selected_dropdown_name if selected_dropdown_name != "-- Select Profile --" else ""
     else:
-        st.warning("⚠️ No registered players found.")
+        st.warning("⚠️ No names detected on registration sheet.")
         user_name = ""
     st.divider()
-    if st.button("🔄 Force Refresh Cache", use_container_width=True):
+    if st.button("🔄 Clear System Cache / Sync Data", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
-# --- PAGE 1: KNOCKOUT PREDICTIONS ---
+# --- INITIALIZE RUNTIME BRACKET WINNERS DICTIONARY ---
+if "ko_winners" not in st.session_state:
+    st.session_state.ko_winners = {}
+
+# --- PAGE 1: KNOCKOUT PREDICTIONS (DYNAMIC MATRIX CASCADING WHEEL) ---
 if page == "Knockout Predictions":
-    st.title("🏆 Knockout Round Predictions Portal")
-    st.markdown("Your previous selections are safely saved. Adjust scores below dynamically until kickoff time.")
+    st.title("🏆 Interactive Knockout Bracket Engine")
+    st.markdown("Your picks are checked and processed down the stream. Selecting a winner auto-allocates the upcoming opponent choices in real time.")
     
     if not user_name:
-        st.warning("👈 Please select your Name from the sidebar dropdown menu to view or edit knockout picks.")
+        st.info("👈 Please authenticate your name from the dropdown choice in the sidebar to open your bracket.")
     else:
-        st.success(f"Active Profile: **{user_name}**")
+        st.success(f"Log-In User: **{user_name}**")
         
         ko_records = []
         try:
             ko_sheet = connect_to_sheet("Knockout_Picks")
             ko_records = ko_sheet.get_all_records()
-        except:
-            pass
-            
+        except: pass
         user_ko_df = pd.DataFrame(ko_records)
         if not user_ko_df.empty:
             user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
 
         raw_matches = fetch_live_matches_api()
-        knockout_stages = ["ROUND_OF_32", "ROUND_OF_16", "QUARTER_FINALS", "SEMI_FINALS", "FINAL"]
-        active_fixtures = [m for m in raw_matches if m.get('stage') in knockout_stages]
+        api_r32 = sorted([m for m in raw_matches if m.get('stage') == "ROUND_OF_32"], key=lambda x: x.get('utcDate', ''))
 
-        # Secure chronological baseline sorting
-        if not active_fixtures:
-            # Generate temporary structure if API is empty
-            active_fixtures = [{"id": 100 + i, "stage": "ROUND_OF_32", "status": "SCHEDULED", "utcDate": f"2026-06-28T{i}:00:00Z"} for i in range(16)]
+        # --- TIER 1: ROUND OF 32 ---
+        st.subheader("1️⃣ Round of 32")
+        for idx, fallback in enumerate(FIXED_R32_MATCHES):
+            tag = fallback['id_tag']
+            is_locked = False
+            home_team = fallback['home']
+            away_team = fallback['away']
+            
+            # Match directly with chronological index array fields inside the raw API structure
+            if idx < len(api_r32):
+                api_m = api_r32[idx]
+                tag = str(api_m.get('id'))
+                is_locked = api_m.get('status') not in ["TIMED", "SCHEDULED"]
+                api_h = api_m.get('homeTeam', {}).get('name') or ""
+                api_a = api_m.get('awayTeam', {}).get('name') or ""
+                if api_h and not any(x in api_h.lower() for x in ["winner", "runner-up", "tbd", "placeholder"]):
+                    home_team = CLEAN_TEAM_MAP.get(standardize_string(api_h), api_h)
+                if api_a and not any(x in api_a.lower() for x in ["winner", "runner-up", "tbd", "placeholder"]):
+                    away_team = CLEAN_TEAM_MAP.get(standardize_string(api_a), api_a)
 
-        for stage_group in knockout_stages:
-            stage_matches = [m for m in active_fixtures if m.get('stage') == stage_group]
-            if not stage_matches: continue
-            
-            # Critical sorting rule step: arrange strictly by kickoff time alignment
-            stage_matches = sorted(stage_matches, key=lambda x: x.get('utcDate', ''))
-            
-            st.markdown(f"### 📦 {stage_group.replace('_', ' ')}")
-            
-            for idx, m in enumerate(stage_matches):
-                m_id = str(m.get('id'))
-                is_locked = m.get('status') not in ["TIMED", "SCHEDULED"]
+            exist_row = user_ko_df[user_ko_df['Match_ID'].astype(str) == tag] if not user_ko_df.empty else pd.DataFrame()
+            default_h = int(exist_row['Home_Score'].values[0]) if not exist_row.empty else 0
+            default_a = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
+            default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home_team
+
+            with st.container(border=True):
+                st.caption(f"📅 Match {fallback['match_no']} • {fallback['date']}")
+                c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
+                with c1:
+                    h_score = st.number_input("Goals", min_value=0, value=default_h, key=f"h_s_{tag}", disabled=is_locked)
+                    st.markdown(f"**{home_team}**")
+                with c2: st.markdown("<p style='text-align:center; padding-top:25px;'>VS</p>", unsafe_allow_html=True)
+                with c3:
+                    a_score = st.number_input("Goals", min_value=0, value=default_a, key=f"a_s_{tag}", disabled=is_locked)
+                    st.markdown(f"**{away_team}**")
+                with c4:
+                    if h_score == a_score:
+                        opts = [home_team, away_team]
+                        w_idx = opts.index(default_w) if default_w in opts else 0
+                        chosen_winner = st.selectbox("Advances via PKs:", opts, index=w_idx, key=f"pk_w_{tag}", disabled=is_locked)
+                    else:
+                        chosen_winner = home_team if h_score > a_score else away_team
+                        st.markdown(f"<p style='padding-top:30px;'><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
                 
-                # Fetch verified dynamic strings
-                clean_h = get_resolved_team_name(m.get('homeTeam'), stage_group, idx, 'home')
-                clean_a = get_resolved_team_name(m.get('awayTeam'), stage_group, idx, 'away')
+                st.session_state.ko_winners[tag] = chosen_winner
                 
+                if not is_locked:
+                    if st.button("Lock Score Selection", key=f"btn_s_{tag}"):
+                        try:
+                            ko_sheet = connect_to_sheet("Knockout_Picks")
+                            full_ko = ko_sheet.get_all_records()
+                            row_i = -1
+                            for idx_r, r in enumerate(full_ko):
+                                if str(r.get('Name')).strip().lower() == user_name.strip().lower() and str(r.get('Match_ID')) == tag:
+                                    row_i = idx_r + 2
+                                    break
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            new_row = [timestamp, user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, "ROUND_OF_32"]
+                            if row_i != -1: ko_sheet.update(range_name=f"A{row_i}:G{row_i}", values=[new_row])
+                            else: ko_sheet.append_row(new_row)
+                            st.toast("Saved successfully!", icon="✅")
+                        except Exception as ex: st.error(f"Save error: {ex}")
+
+        # --- TIERS 2-5: DYNAMIC STRUCTURAL CASCADING GROUPS ---
+        stages_list = [("ROUND_OF_16", "2️⃣ Round of 16"), ("QUARTER_FINALS", "3️⃣ Quarterfinals"), ("SEMI_FINALS", "4️⃣ Semifinals"), ("FINAL", "5️⃣ World Cup Final")]
+        
+        for stage_key, stage_label in stages_list:
+            st.write("---")
+            st.subheader(stage_label)
+            
+            api_stage_matches = sorted([m for m in raw_matches if m.get('stage') == stage_key], key=lambda x: x.get('utcDate', ''))
+            
+            for index, (m_id, sources) in enumerate(BRACKET_MAPPING[stage_key].items()):
+                # Dynamic validation: fetch actual selections from predecessors
+                t1_fallback = st.session_state.ko_winners.get(sources[0], f"Winner {sources[0]}")
+                t2_fallback = st.session_state.ko_winners.get(sources[1], f"Winner {sources[1]}")
+                
+                is_locked = False
+                if index < len(api_stage_matches):
+                    api_m = api_stage_matches[index]
+                    m_id = str(api_m.get('id'))
+                    is_locked = api_m.get('status') not in ["TIMED", "SCHEDULED"]
+                    api_h = api_m.get('homeTeam', {}).get('name') or ""
+                    api_a = api_m.get('awayTeam', {}).get('name') or ""
+                    if api_h and not any(x in api_h.lower() for x in ["winner", "runner-up", "tbd"]): t1_fallback = CLEAN_TEAM_MAP.get(standardize_string(api_h), api_h)
+                    if api_a and not any(x in api_a.lower() for x in ["winner", "runner-up", "tbd"]): t2_fallback = CLEAN_TEAM_MAP.get(standardize_string(api_a), api_a)
+
                 exist_row = user_ko_df[user_ko_df['Match_ID'].astype(str) == m_id] if not user_ko_df.empty else pd.DataFrame()
-                default_h_score = int(exist_row['Home_Score'].values[0]) if not exist_row.empty else 0
-                default_a_score = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
-                default_winner = str(exist_row['Winner'].values[0]) if not exist_row.empty else clean_h
-                
+                default_h = int(exist_row['Home_Score'].values[0]) if not exist_row.empty else 0
+                default_a = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
+                default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else t1_fallback
+
                 with st.container(border=True):
+                    st.caption(f"🏆 Match Code Reference Slot: ID {m_id}")
                     c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
                     with c1:
-                        st.markdown(f"#### {clean_h}")
-                        h_score = st.number_input("Goals", min_value=0, max_value=20, value=default_h_score, key=f"h_{m_id}_{stage_group}", disabled=is_locked)
-                    with c2:
-                        st.markdown("<h3 style='text-align: center; padding-top: 25px;'>VS</h3>", unsafe_allow_html=True)
+                        h_score = st.number_input("Goals", min_value=0, value=default_h, key=f"h_s_{m_id}", disabled=is_locked)
+                        st.markdown(f"**{t1_fallback}**")
+                    with c2: st.markdown("<p style='text-align:center; padding-top:25px;'>VS</p>", unsafe_allow_html=True)
                     with c3:
-                        st.markdown(f"#### {clean_a}")
-                        a_score = st.number_input("Goals", min_value=0, max_value=20, value=default_a_score, key=f"a_{m_id}_{stage_group}", disabled=is_locked)
+                        a_score = st.number_input("Goals", min_value=0, value=default_a, key=f"a_s_{m_id}", disabled=is_locked)
+                        st.markdown(f"**{t2_fallback}**")
                     with c4:
-                        st.markdown("#### Outcome Target")
                         if h_score == a_score:
-                            winner_choices = [clean_h, clean_a]
-                            def_idx = winner_choices.index(default_winner) if default_winner in winner_choices else 0
-                            final_winner = st.selectbox("Advances via PKs", options=winner_choices, index=def_idx, key=f"w_{m_id}_{stage_group}", disabled=is_locked)
+                            opts = [t1_fallback, t2_fallback]
+                            w_idx = opts.index(default_w) if default_w in opts else 0
+                            chosen_winner = st.selectbox("Advances via PKs:", opts, index=w_idx, key=f"pk_w_{m_id}", disabled=is_locked)
                         else:
-                            final_winner = clean_h if h_score > a_score else clean_a
-                            st.info(f"👉 Winner: {final_winner}")
+                            chosen_winner = t1_fallback if h_score > a_score else t2_fallback
+                            st.markdown(f"<p style='padding-top:30px;'><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
+                    
+                    st.session_state.ko_winners[m_id] = chosen_winner
+                    
+                    if stage_key == "FINAL" and chosen_winner not in ["Winner QF 1", "Winner QF 2", "Winner M101", "Winner M102"]:
+                        st.success(f"🏆 **Your Projected World Champion:** {chosen_winner}")
                     
                     if not is_locked:
-                        if st.button("Save Prediction Entry", key=f"btn_{m_id}_{stage_group}"):
+                        if st.button("Lock Score Selection", key=f"btn_s_{m_id}"):
                             try:
                                 ko_sheet = connect_to_sheet("Knockout_Picks")
-                                full_ko_records = ko_sheet.get_all_records()
-                                target_row_idx = -1
-                                for row_i, r in enumerate(full_ko_records):
+                                full_ko = ko_sheet.get_all_records()
+                                row_i = -1
+                                for idx_r, r in enumerate(full_ko):
                                     if str(r.get('Name')).strip().lower() == user_name.strip().lower() and str(r.get('Match_ID')) == m_id:
-                                        target_row_idx = row_i + 2
+                                        row_i = idx_r + 2
                                         break
                                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                new_row = [timestamp, user_name.strip(), m_id, int(h_score), int(a_score), final_winner, stage_group]
-                                if target_row_idx != -1:
-                                    ko_sheet.update(range_name=f"A{target_row_idx}:G{target_row_idx}", values=[new_row])
-                                else:
-                                    ko_sheet.append_row(new_row)
-                                st.toast(f"Saved: {clean_h} vs {clean_a} choice logged!", icon="✅")
-                            except Exception as ex:
-                                st.error(f"Error writing to sheet: {ex}")
+                                new_row = [timestamp, user_name.strip(), m_id, int(h_score), int(a_score), chosen_winner, stage_key]
+                                if row_i != -1: ko_sheet.update(range_name=f"A{row_i}:G{row_i}", values=[new_row])
+                                else: ko_sheet.append_row(new_row)
+                                st.toast("Saved successfully!", icon="✅")
+                            except Exception as ex: st.error(f"Save error: {ex}")
 
 # --- PAGE 2: LEADERBOARD ---
 elif page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
-    with st.spinner("Calculating live scores..."):
+    with st.spinner("Processing point totals..."):
         try:
             live_standings_map = fetch_and_merge_api_data()
-            st.success("✅ Fully Automated Standings Synced")
+            st.success(f"✅ Live Standings Sync Complete")
         except:
             live_standings_map = st.session_state["automated_live_cache"]
-            st.info("📡 Using cached standings data.")
+            st.info("📡 Running on cache mode.")
             
         live_matches_list = fetch_live_matches_api()
         all_ko_picks = []
@@ -327,11 +380,13 @@ elif page == "Leaderboard":
                 rename_dict = {df.columns[0]: 'Timestamp', df.columns[1]: 'Name'}
                 for col in df.columns:
                     clean_col = re.sub(r'\s+', '', str(col)).upper()
-                    match = re.match(r'^([A-L][1-4])$', clean_col)
-                    if match: rename_dict[col] = match.group(1)
+                    if re.match(r'^([A-L][1-4])$', clean_col): rename_dict[col] = clean_col
                     elif clean_col == 'STATUS': rename_dict[col] = 'Status'
                 df = df.rename(columns=rename_dict)
                 if 'Status' not in df.columns: df['Status'] = 'Pending'
+
+                paid_count = df['Status'].astype(str).str.strip().str.lower().eq('paid').sum()
+                st.sidebar.metric(label="💰 Total Pool Pot", value=f"${paid_count * 10} USD")
 
                 def calculate_live_user_score(row):
                     total_points = 0
@@ -346,36 +401,25 @@ elif page == "Leaderboard":
                     if not ko_df_all.empty and live_matches_list:
                         u_name = str(row.get('Name')).strip().lower()
                         user_subset = ko_df_all[ko_df_all['Name'].astype(str).str.lower() == u_name]
-                        
-                        # Apply chronological sorting to align accurate indexing criteria
-                        for stage_group in ["ROUND_OF_32", "ROUND_OF_16", "QUARTER_FINALS", "SEMI_FINALS", "FINAL"]:
-                            stage_api_matches = sorted([m for m in live_matches_list if m.get('stage') == stage_group], key=lambda x: x.get('utcDate', ''))
-                            
-                            for idx, api_match in enumerate(stage_api_matches):
-                                match_id_target = str(api_match.get('id'))
-                                ko_pick = user_subset[user_subset['Match_ID'].astype(str) == match_id_target]
-                                if ko_pick.empty: continue
-                                ko_pick = ko_pick.iloc[0]
-                                
-                                if api_match.get('status') == 'FINISHED':
-                                    api_ft = api_match.get('score', {}).get('fullTime', {})
-                                    if str(ko_pick.get('Home_Score')) == str(api_ft.get('home')): total_points += 1
-                                    if str(ko_pick.get('Away_Score')) == str(api_ft.get('away')): total_points += 1
-                                    
-                                    act_winner_side = api_match.get('score', {}).get('winner')
-                                    act_winner_name = ""
-                                    if act_winner_side == "HOME_TEAM": act_winner_name = api_match.get('homeTeam', {}).get('name')
-                                    elif act_winner_side == "AWAY_TEAM": act_winner_name = api_match.get('awayTeam', {}).get('name')
-                                    
-                                    if act_winner_name:
-                                        clean_act_winner = CLEAN_TEAM_MAP.get(standardize_string(act_winner_name), act_winner_name).strip().lower()
-                                        if str(ko_pick.get('Winner')).strip().lower() == clean_act_winner: total_points += 1
+                        for _, ko_pick in user_subset.iterrows():
+                            match_id_target = str(ko_pick.get('Match_ID'))
+                            api_match = next((m for m in live_matches_list if str(m.get('id')) == match_id_target), None)
+                            if api_match and api_match.get('status') == 'FINISHED':
+                                api_ft = api_match.get('score', {}).get('fullTime', {})
+                                if str(ko_pick.get('Home_Score')) == str(api_ft.get('home')): total_points += 1
+                                if str(ko_pick.get('Away_Score')) == str(api_ft.get('away')): total_points += 1
+                                act_winner_side = api_match.get('score', {}).get('winner')
+                                act_winner_name = ""
+                                if act_winner_side == "HOME_TEAM": act_winner_name = api_match.get('homeTeam', {}).get('name')
+                                elif act_winner_side == "AWAY_TEAM": act_winner_name = api_match.get('awayTeam', {}).get('name')
+                                if act_winner_name and str(ko_pick.get('Winner')).strip().lower() == CLEAN_TEAM_MAP.get(standardize_string(act_winner_name), act_winner_name).strip().lower():
+                                    total_points += 1
                     return total_points
 
                 df['Points'] = df.apply(calculate_live_user_score, axis=1)
                 leaderboard_df = df[['Name', 'Points', 'Status']].sort_values(by='Points', ascending=False)
                 
-                st.subheader("Current Standings")
+                st.subheader("Current Leaderboard Matrix")
                 cols = st.columns([2, 1, 1, 2])
                 cols[0].markdown("**Name**"); cols[1].markdown("**Points**"); cols[2].markdown("**Status**"); cols[3].markdown("**Download**")
                 st.divider()
@@ -384,17 +428,17 @@ elif page == "Leaderboard":
                     cols[0].write(r['Name']); cols[1].write(r['Points']); cols[2].write(r['Status'])
                     csv = df[df['Name'] == r['Name']].to_csv(index=False).encode('utf-8')
                     cols[3].download_button(label="📥 CSV", data=csv, file_name=f"{r['Name']}_picks.csv", key=f"dl_{r['Name']}")
-            else: st.info("No entries yet.")
-        except Exception as e: st.error(f"Leaderboard Error: {e}")
+            else: st.info("No entries found yet.")
+        except Exception as e: st.error(f"Leaderboard logic error: {e}")
 
-# --- PAGE 3: CLOSED GROUP INSTRUCTIONS ---
+# --- PAGE 3: LOCKED GROUP INSTRUCTIONS ---
 elif page == "Group Predictions (Closed)":
-    st.title("🏆 Group Predictions Locked")
+    st.title("🏆 Group Phase Standings Matrix")
     st.warning("🔒 Group phase prediction window is closed.")
 
-# --- PAGE 4: RULES & CHAT FORUM ---
+# --- PAGE 4: RULES & FORUM ---
 elif page == "Rules & Chat Forum":
     st.title("📜 Pool Rules")
-    with st.expander("View Full Rules & Payment Details", expanded=True):
+    with st.expander("View Details", expanded=True):
         st.write("**Scoring Formula:** Group match order accuracy = 1 point per team placement. Knockout phase accuracy = 1 point for the correct match outcome (advancing team) + 1 point for each exact individual team score prediction.")
-        st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
+        st.info("USA: Venmo @jhradecky | Canada: Interac e-transfer julien.hradecky@gmail.com")
