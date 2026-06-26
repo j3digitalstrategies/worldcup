@@ -131,7 +131,7 @@ def get_registered_players(retries=3):
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
             else:
-                st.error("⚠️ Could not load player list from Google Sheets. Please refresh the page.")
+                st.error("⚠️ Could not load player list from Google Sheets.")
                 return []
         except Exception as e:
             st.error(f"⚠️ Unexpected error loading players: {e}")
@@ -196,7 +196,7 @@ with st.sidebar:
         selected_dropdown_name = st.selectbox("Identify Profile Name:", ["-- Select Profile --"] + registered_players)
         user_name = selected_dropdown_name if selected_dropdown_name != "-- Select Profile --" else ""
     else:
-        st.warning("⚠️ Could not load player list. Try refreshing or click Sync below.")
+        st.warning("⚠️ Could not load player list.")
         user_name = ""
     st.divider()
     if st.button("🔄 Clear System Cache / Sync Data", use_container_width=True):
@@ -214,7 +214,7 @@ if page == "Knockout Predictions":
         try:
             ko_sheet = connect_to_sheet("Knockout_Picks")
         except Exception as e:
-            st.error(f"❌ Could not connect to picks sheet: {e}. Please refresh and try again.")
+            st.error(f"❌ Could not connect to picks sheet: {e}")
             st.stop()
 
         user_ko_df = pd.DataFrame(ko_sheet.get_all_records())
@@ -229,10 +229,12 @@ if page == "Knockout Predictions":
             default_a = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
             default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home
             
+            # Logic: Green border if both teams known and not TBD
             is_ready = "TBD" not in [home, away]
             border_style = "2px solid #2ecc71" if is_ready else "1px solid #ccc"
 
             with st.container(border=True):
+                # CSS for border
                 st.markdown(f"""<style>[data-testid="stVerticalBlock"]:has(> div > p > b:contains("{home}")) {{ border: {border_style} !important; border-radius: 5px; }}</style>""", unsafe_allow_html=True)
                 
                 if date: st.caption(f"📅 Match {match_no} • {date}")
@@ -253,20 +255,22 @@ if page == "Knockout Predictions":
 
                 st.session_state.ko_winners[tag] = chosen_winner
                 
-                sub_c1, sub_c2 = st.columns([1, 4])
+                # Lock/Update Button + Status Indicator
+                sub_c1, sub_c2 = st.columns([2, 2])
                 with sub_c1:
+                    if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
+                        row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
+                        new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
+                        success = save_pick_with_retry(ko_sheet, row_i, new_row)
+                        if success:
+                            st.toast("✅ Saved!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to save.")
+                
+                with sub_c2:
                     if not exist_row.empty:
-                        st.button("✅ Submitted", key=f"sub_ind_{tag}", disabled=True)
-                    elif not is_locked:
-                        if st.button("Lock Score", key=f"btn_s_{tag}"):
-                            row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
-                            new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
-                            success = save_pick_with_retry(ko_sheet, row_i, new_row)
-                            if success:
-                                st.toast("✅ Saved!")
-                                st.rerun()
-                            else:
-                                st.error("❌ Failed to save. Please try again.")
+                        st.markdown("🟢 **Submitted**")
 
         st.subheader("1️⃣ Round of 32")
         api_r32 = sorted([m for m in raw_matches if m.get('stage') == "ROUND_OF_32"], key=lambda x: x.get('utcDate', ''))
@@ -288,8 +292,9 @@ if page == "Knockout Predictions":
             success = save_pick_with_retry(ko_sheet, -1, [datetime.now().strftime("%Y-%m-%d"), user_name, "TIE_BREAKER", tb_val, 0, "N/A", "TIE"])
             if success:
                 st.success("Tie-breaker submitted!")
+                st.rerun()
             else:
-                st.error("❌ Failed to save tie-breaker. Please try again.")
+                st.error("❌ Failed to save.")
 
 elif page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
