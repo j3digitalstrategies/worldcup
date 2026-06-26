@@ -113,7 +113,7 @@ def connect_to_sheet(tab_name="sheet1", retries=3):
             return spreadsheet.sheet1 if tab_name == "sheet1" else spreadsheet.worksheet(tab_name)
         except gspread.exceptions.APIError as e:
             if attempt < retries - 1:
-                time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
+                time.sleep(2 ** attempt)
             else:
                 raise e
 
@@ -228,8 +228,13 @@ if page == "Knockout Predictions":
             default_h = int(exist_row['Home_Score'].values[0]) if not exist_row.empty else 0
             default_a = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
             default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home
+            
+            is_ready = "TBD" not in [home, away]
+            border_style = "2px solid #2ecc71" if is_ready else "1px solid #ccc"
 
             with st.container(border=True):
+                st.markdown(f"""<style>[data-testid="stVerticalBlock"]:has(> div > p > b:contains("{home}")) {{ border: {border_style} !important; border-radius: 5px; }}</style>""", unsafe_allow_html=True)
+                
                 if date: st.caption(f"📅 Match {match_no} • {date}")
                 c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
                 with c1:
@@ -247,14 +252,21 @@ if page == "Knockout Predictions":
                         st.markdown(f"<br><p><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
 
                 st.session_state.ko_winners[tag] = chosen_winner
-                if not is_locked and st.button("Lock Score", key=f"btn_s_{tag}"):
-                    row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
-                    new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
-                    success = save_pick_with_retry(ko_sheet, row_i, new_row)
-                    if success:
-                        st.toast("✅ Saved!")
-                    else:
-                        st.error("❌ Failed to save after 3 attempts. Please try again.")
+                
+                sub_c1, sub_c2 = st.columns([1, 4])
+                with sub_c1:
+                    if not exist_row.empty:
+                        st.button("✅ Submitted", key=f"sub_ind_{tag}", disabled=True)
+                    elif not is_locked:
+                        if st.button("Lock Score", key=f"btn_s_{tag}"):
+                            row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
+                            new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
+                            success = save_pick_with_retry(ko_sheet, row_i, new_row)
+                            if success:
+                                st.toast("✅ Saved!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to save. Please try again.")
 
         st.subheader("1️⃣ Round of 32")
         api_r32 = sorted([m for m in raw_matches if m.get('stage') == "ROUND_OF_32"], key=lambda x: x.get('utcDate', ''))
