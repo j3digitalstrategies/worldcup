@@ -221,7 +221,6 @@ if page == "Knockout Predictions":
         user_ko_df = pd.DataFrame(ko_sheet.get_all_records())
         if not user_ko_df.empty:
             user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
-            
             for _, row in user_ko_df.iterrows():
                 st.session_state.ko_winners[str(row['Match_ID'])] = str(row['Winner'])
 
@@ -271,24 +270,41 @@ if page == "Knockout Predictions":
                         st.markdown("🟢 **Submitted**")
 
         st.subheader("1️⃣ Round of 32")
-        api_r32 = sorted([m for m in raw_matches if m.get('stage') == "ROUND_OF_32"], key=lambda x: x.get('utcDate', ''))
         
-        # Smart mapping: Find matches based on known teams rather than array index
+        # Pull ALL knockout matches regardless of what the API names the stage, sort by chronological time
+        ko_matches = [m for m in raw_matches if str(m.get('stage', '')).upper() not in ['GROUP_STAGE', 'REGULAR_SEASON', 'NONE', '']]
+        ko_matches.sort(key=lambda x: x.get('utcDate', '9999-12-31'))
+        
         mapped_api_matches = {}
-        for f in FIXED_R32_MATCHES:
-            for m in api_r32:
+        
+        # If the API populated the full bracket (at least 16 matches), strictly match them chronologically
+        if len(ko_matches) >= 16:
+            for i, f in enumerate(FIXED_R32_MATCHES):
+                m = ko_matches[i]
                 api_h_raw = m.get('homeTeam', {}).get('name', '')
                 api_a_raw = m.get('awayTeam', {}).get('name', '')
-                if not api_h_raw or not api_a_raw: continue
                 
-                api_h = CLEAN_TEAM_MAP.get(standardize_string(api_h_raw), api_h_raw)
-                api_a = CLEAN_TEAM_MAP.get(standardize_string(api_a_raw), api_a_raw)
+                api_h = CLEAN_TEAM_MAP.get(standardize_string(api_h_raw), api_h_raw) if api_h_raw else "TBD"
+                api_a = CLEAN_TEAM_MAP.get(standardize_string(api_a_raw), api_a_raw) if api_a_raw else "TBD"
                 
-                # If a known team from the fixed list is found in this API match, map it
-                if (f['home'] != "TBD" and (f['home'] == api_h or f['home'] == api_a)) or \
-                   (f['away'] != "TBD" and (f['away'] == api_h or f['away'] == api_a)):
-                    mapped_api_matches[f['id_tag']] = {"api_match": m, "real_home": api_h, "real_away": api_a}
-                    break
+                if not api_h: api_h = "TBD"
+                if not api_a: api_a = "TBD"
+                
+                mapped_api_matches[f['id_tag']] = {"api_match": m, "real_home": api_h, "real_away": api_a}
+        else:
+            # Fallback for partial data: aggressively search the entire knockout list for any matching teams
+            for f in FIXED_R32_MATCHES:
+                for m in ko_matches:
+                    api_h_raw = m.get('homeTeam', {}).get('name', '')
+                    api_a_raw = m.get('awayTeam', {}).get('name', '')
+                    
+                    api_h = CLEAN_TEAM_MAP.get(standardize_string(api_h_raw), api_h_raw)
+                    api_a = CLEAN_TEAM_MAP.get(standardize_string(api_a_raw), api_a_raw)
+                    
+                    if (f['home'] != "TBD" and f['home'] in [api_h, api_a]) or \
+                       (f['away'] != "TBD" and f['away'] in [api_h, api_a]):
+                        mapped_api_matches[f['id_tag']] = {"api_match": m, "real_home": api_h, "real_away": api_a}
+                        break
 
         for f in FIXED_R32_MATCHES:
             tag = f['id_tag']
@@ -332,22 +348,21 @@ elif page == "Leaderboard":
         st.error(f"❌ Could not load picks: {e}")
         st.stop()
 
-    # Replicate the smart mapping so the leaderboard knows how to score the R32 games
-    api_r32 = [m for m in live_matches if m.get('stage') == "ROUND_OF_32"]
+    ko_matches = [m for m in live_matches if str(m.get('stage', '')).upper() not in ['GROUP_STAGE', 'REGULAR_SEASON', 'NONE', '']]
+    ko_matches.sort(key=lambda x: x.get('utcDate', '9999-12-31'))
+
     tag_to_api_match = {}
-    for f in FIXED_R32_MATCHES:
-        for m in api_r32:
-            api_h_raw = m.get('homeTeam', {}).get('name', '')
-            api_a_raw = m.get('awayTeam', {}).get('name', '')
-            if not api_h_raw or not api_a_raw: continue
-            
-            api_h = CLEAN_TEAM_MAP.get(standardize_string(api_h_raw), api_h_raw)
-            api_a = CLEAN_TEAM_MAP.get(standardize_string(api_a_raw), api_a_raw)
-            
-            if (f['home'] != "TBD" and (f['home'] == api_h or f['home'] == api_a)) or \
-               (f['away'] != "TBD" and (f['away'] == api_h or f['away'] == api_a)):
-                tag_to_api_match[f['id_tag']] = m
-                break
+    if len(ko_matches) >= 16:
+        for i, f in enumerate(FIXED_R32_MATCHES):
+            tag_to_api_match[f['id_tag']] = ko_matches[i]
+    else:
+        for f in FIXED_R32_MATCHES:
+            for m in ko_matches:
+                api_h = CLEAN_TEAM_MAP.get(standardize_string(m.get('homeTeam', {}).get('name')), m.get('homeTeam', {}).get('name'))
+                api_a = CLEAN_TEAM_MAP.get(standardize_string(m.get('awayTeam', {}).get('name')), m.get('awayTeam', {}).get('name'))
+                if (f['home'] != "TBD" and f['home'] in [api_h, api_a]) or (f['away'] != "TBD" and f['away'] in [api_h, api_a]):
+                    tag_to_api_match[f['id_tag']] = m
+                    break
 
     def calc_score(row):
         score = 0
@@ -368,4 +383,21 @@ elif page == "Leaderboard":
                 away_team = CLEAN_TEAM_MAP.get(standardize_string(m.get('awayTeam', {}).get('name')), str(m.get('awayTeam', {}).get('name')))
                 
                 actual_advancing = None
-                if api_winner == 'HOME_TEAM': actual
+                if api_winner == 'HOME_TEAM': actual_advancing = home_team
+                elif api_winner == 'AWAY_TEAM': actual_advancing = away_team
+
+                if actual_advancing and standardize_string(str(p['Winner'])) == standardize_string(actual_advancing): 
+                    score += 1
+        return score
+
+    try:
+        df = pd.DataFrame(connect_to_sheet("sheet1").get_all_records())
+        if not df.empty:
+            df['Points'] = df.apply(calc_score, axis=1)
+            st.table(df[['Name', 'Points']].sort_values(by='Points', ascending=False))
+    except Exception as e:
+        st.error(f"❌ Could not load leaderboard: {e}")
+
+elif page == "Rules & Chat Forum":
+    st.title("📜 Pool Rules")
+    st.write("**Formula:** 1 pt/correct winner, 1 pt/exact home score, 1 pt/exact away score. (Max 3 points per match)")
