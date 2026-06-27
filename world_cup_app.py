@@ -65,7 +65,7 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # BOTH teams confirmed:
+    # ONLY entries where BOTH teams are 100% confirmed
     "M73": ("South Africa",  "Canada"),
     "M74": ("Germany",       "Paraguay"),
     "M75": ("Netherlands",   "Morocco"),
@@ -75,14 +75,7 @@ R32_FALLBACK = {
     "M81": ("USA",           "Bosnia"),
     "M83": ("Australia",     "Egypt"),
     "M86": ("Argentina",     "Cape Verde"),
-    # ONE team confirmed, opponent TBD (3rd place teams not yet decided):
-    "M79": ("Mexico",        "TBD"),
-    "M80": ("England",       "TBD"),
-    "M82": ("Belgium",       "TBD"),
-    "M84": ("Spain",         "TBD"),
-    "M85": ("Switzerland",   "TBD"),
-    "M87": ("TBD",           "TBD"),
-    "M88": ("Colombia",      "TBD"),
+    # Everything else is TBD until confirmed
 }
 
 R32_SLOTS = [
@@ -294,9 +287,15 @@ def fetch_all_knockout_matches():
             continue
         ko_by_stage.setdefault(stage, []).append(m)
         for side in ['homeTeam', 'awayTeam']:
-            raw = (m.get(side, {}).get('name') or m.get(side, {}).get('shortName') or '').strip()
-            if raw:
-                api_by_team[clean_team(raw)] = m
+            team = m.get(side, {})
+            # Try every possible field the API might use for team name
+            raw = (team.get('name') or team.get('shortName') or
+                   team.get('tla') or team.get('crestUrl') or '').strip()
+            # Also try id-based lookup isn't helpful but log what we have
+            if raw and raw != 'null':
+                ct = clean_team(raw)
+                api_by_team[ct] = m
+                api_by_team[raw] = m  # also store raw in case clean_team misses it
 
     for stage in ko_by_stage:
         ko_by_stage[stage].sort(key=lambda x: x.get('utcDate', '9999'))
@@ -373,6 +372,10 @@ def fetch_all_knockout_matches():
         "total_api_matches": len(all_matches),
         "knockout_by_stage": {s: len(v) for s, v in ko_by_stage.items()},
         "api_teams_found": list(api_by_team.keys())[:20],
+        "raw_sample": [
+            {"stage": m.get('stage'), "homeTeam": m.get('homeTeam'), "awayTeam": m.get('awayTeam')}
+            for m in list(ko_by_stage.get('LAST_32', ko_by_stage.get(list(ko_by_stage.keys())[0], [])) if ko_by_stage else [])[:3]
+        ],
     }
     return tag_to_match
 
