@@ -65,19 +65,24 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # ONLY add entries here when BOTH teams are 100% confirmed
-    # If either team is uncertain, leave it out entirely — show TBD instead
-    # API takes priority over everything here
-    "M73": ("South Africa",  "Canada"),       # confirmed
-    "M74": ("Germany",       "Paraguay"),     # confirmed
-    "M75": ("Netherlands",   "Morocco"),      # confirmed
-    "M76": ("Brazil",        "Japan"),        # confirmed
-    "M77": ("France",        "Sweden"),       # confirmed
-    "M78": ("Ivory Coast",   "Norway"),       # confirmed
-    "M81": ("USA",           "Bosnia"),       # confirmed
-    "M83": ("Australia",     "Egypt"),        # confirmed
-    "M86": ("Argentina",     "Cape Verde"),   # confirmed
-    # M79, M80, M82, M84, M85, M87, M88 — not yet confirmed, will show TBD
+    # BOTH teams confirmed:
+    "M73": ("South Africa",  "Canada"),
+    "M74": ("Germany",       "Paraguay"),
+    "M75": ("Netherlands",   "Morocco"),
+    "M76": ("Brazil",        "Japan"),
+    "M77": ("France",        "Sweden"),
+    "M78": ("Ivory Coast",   "Norway"),
+    "M81": ("USA",           "Bosnia"),
+    "M83": ("Australia",     "Egypt"),
+    "M86": ("Argentina",     "Cape Verde"),
+    # ONE team confirmed, opponent TBD (3rd place teams not yet decided):
+    "M79": ("Mexico",        "TBD"),
+    "M80": ("England",       "TBD"),
+    "M82": ("Belgium",       "TBD"),
+    "M84": ("Spain",         "TBD"),
+    "M85": ("Switzerland",   "TBD"),
+    "M87": ("TBD",           "TBD"),
+    "M88": ("Colombia",      "TBD"),
 }
 
 R32_SLOTS = [
