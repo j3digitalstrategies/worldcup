@@ -65,25 +65,19 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # Official FIFA match numbers with confirmed teams (Sky Sports / FIFA Jun 27 2026)
-    # API always takes priority — these only fill in when API returns NULL
-    # Remove an entry once the API starts populating it correctly
-    "M73": ("South Africa",  "Canada"),        # Jun 28
-    "M74": ("Germany",       "Paraguay"),      # Jun 29
-    "M75": ("Netherlands",   "Morocco"),       # Jun 30 (2am ET)
-    "M76": ("Brazil",        "Japan"),         # Jun 29
-    "M77": ("France",        "Sweden"),        # Jun 30
-    "M78": ("Ivory Coast",   "Norway"),        # Jun 30
-    "M79": ("Mexico",        "TBD"),           # Jul 1 - 3rd place C/E/F/H/I not yet confirmed
-    "M80": ("England",       "TBD"),           # Jul 1 - L winner vs 3rd not yet confirmed
-    "M81": ("USA",           "Bosnia"),        # Jul 2
-    "M82": ("Belgium",       "Ecuador"),       # Jul 1
-    "M83": ("Australia",     "Egypt"),         # Jul 2
-    "M84": ("Spain",         "Austria"),       # Jul 2 - J2 not yet confirmed (Algeria or Austria)
-    "M85": ("Switzerland",   "TBD"),           # Jul 3 - 3rd place not yet confirmed
-    "M86": ("Argentina",     "Cape Verde"),    # Jul 3
-    "M87": ("TBD",           "TBD"),           # Jul 3 - K2 vs L2 not yet confirmed
-    "M88": ("Colombia",      "TBD"),           # Jul 3 - K1 vs 3rd not yet confirmed
+    # ONLY add entries here when BOTH teams are 100% confirmed
+    # If either team is uncertain, leave it out entirely — show TBD instead
+    # API takes priority over everything here
+    "M73": ("South Africa",  "Canada"),       # confirmed
+    "M74": ("Germany",       "Paraguay"),     # confirmed
+    "M75": ("Netherlands",   "Morocco"),      # confirmed
+    "M76": ("Brazil",        "Japan"),        # confirmed
+    "M77": ("France",        "Sweden"),       # confirmed
+    "M78": ("Ivory Coast",   "Norway"),       # confirmed
+    "M81": ("USA",           "Bosnia"),       # confirmed
+    "M83": ("Australia",     "Egypt"),        # confirmed
+    "M86": ("Argentina",     "Cape Verde"),   # confirmed
+    # M79, M80, M82, M84, M85, M87, M88 — not yet confirmed, will show TBD
 }
 
 R32_SLOTS = [
