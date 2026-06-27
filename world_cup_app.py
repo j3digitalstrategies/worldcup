@@ -65,17 +65,18 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # ONLY entries where BOTH teams are 100% confirmed
+    # Confirmed by API (teams appear in api_teams_found):
     "M73": ("South Africa",  "Canada"),
     "M74": ("Germany",       "Paraguay"),
     "M75": ("Netherlands",   "Morocco"),
     "M76": ("Brazil",        "Japan"),
-    "M77": ("France",        "Sweden"),
-    "M78": ("Ivory Coast",   "Norway"),
+    "M78": ("Ivory Coast",   "TBD"),      # Ivory Coast confirmed, opponent TBD
+    "M79": ("Mexico",        "TBD"),      # Mexico confirmed, opponent TBD
     "M81": ("USA",           "Bosnia"),
-    "M83": ("Australia",     "Egypt"),
-    "M86": ("Argentina",     "Cape Verde"),
-    # Everything else is TBD until confirmed
+    "M83": ("Australia",     "TBD"),      # Australia confirmed, opponent TBD
+    "M85": ("Switzerland",   "TBD"),      # Switzerland confirmed, opponent TBD
+    "M86": ("Argentina",     "TBD"),      # Argentina confirmed, opponent TBD
+    # M77, M80, M82, M84, M87, M88 — not yet in API, full TBD
 }
 
 R32_SLOTS = [
@@ -302,12 +303,15 @@ def fetch_all_knockout_matches():
 
     tag_to_match = {}
 
-    # ── R32: teams come from R32_FALLBACK, status/score from API by team lookup ──
+    # ── R32: find API match using fallback team name, then use API for BOTH teams
+    # If API has both teams for a match, show them. If only one, show that + TBD.
+    # If API has neither (match not populated yet), use fallback or TBD.
     r32_tags = [tag for _, size, tags in ROUND_SIZES if size == 16 for tag in tags]
     assigned_ids = set()
     for tag in r32_tags:
         fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
-        # Find API match by looking up a known team from fallback
+
+        # Find the API match using any known team from fallback
         matched_m = None
         for name in [fb_home, fb_away]:
             if name != "TBD" and name in api_by_team:
@@ -316,15 +320,34 @@ def fetch_all_knockout_matches():
                     matched_m = candidate
                     assigned_ids.add(candidate.get('id'))
                     break
-        tag_to_match[tag] = {
-            "home":      fb_home,
-            "away":      fb_away,
-            "status":    matched_m.get('status', 'SCHEDULED') if matched_m else 'SCHEDULED',
-            "score":     matched_m.get('score', {}) if matched_m else {},
-            "winner":    matched_m.get('score', {}).get('winner') if matched_m else None,
-            "stage_raw": matched_m.get('stage', '') if matched_m else '',
-            "api_id":    matched_m.get('id') if matched_m else None,
-        }
+
+        if matched_m:
+            # Use API team names — they may have both teams already
+            h_raw = (matched_m.get('homeTeam', {}).get('name') or
+                     matched_m.get('homeTeam', {}).get('shortName') or '').strip()
+            a_raw = (matched_m.get('awayTeam', {}).get('name') or
+                     matched_m.get('awayTeam', {}).get('shortName') or '').strip()
+            api_h = clean_team(h_raw) if h_raw else "TBD"
+            api_a = clean_team(a_raw) if a_raw else "TBD"
+            # Use API teams if available, fall back to confirmed fallback if not
+            h = api_h if api_h != "TBD" else fb_home
+            a = api_a if api_a != "TBD" else fb_away
+            tag_to_match[tag] = {
+                "home":      h,
+                "away":      a,
+                "status":    matched_m.get('status', 'SCHEDULED'),
+                "score":     matched_m.get('score', {}),
+                "winner":    matched_m.get('score', {}).get('winner'),
+                "stage_raw": matched_m.get('stage', ''),
+                "api_id":    matched_m.get('id'),
+            }
+        else:
+            # No API match found — use fallback (may be TBD vs TBD)
+            tag_to_match[tag] = {
+                "home": fb_home, "away": fb_away,
+                "status": "SCHEDULED", "score": {},
+                "winner": None, "stage_raw": "", "api_id": None
+            }
 
     # ── Later rounds: purely from API by position ──────────────────────────────
     size_to_tags = {size: tags for _, size, tags in ROUND_SIZES if size < 16}
