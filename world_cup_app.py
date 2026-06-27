@@ -65,41 +65,43 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    "M73": ("South Africa", "Canada"),
-    "M74": ("Brazil",       "Japan"),
-    "M75": ("Germany",      "Paraguay"),
-    "M76": ("Netherlands",  "Morocco"),
-    "M77": ("Ivory Coast",  "Norway"),
-    "M78": ("TBD",          "TBD"),
-    "M79": ("Mexico",       "TBD"),
-    "M80": ("TBD",          "TBD"),
-    "M81": ("TBD",          "TBD"),
-    "M82": ("USA",          "Bosnia"),
-    "M83": ("TBD",          "TBD"),
-    "M84": ("TBD",          "TBD"),
-    "M85": ("Switzerland",  "TBD"),
-    "M86": ("Australia",    "TBD"),
-    "M87": ("Argentina",    "Cape Verde"),
-    "M88": ("TBD",          "TBD"),
+    # Official FIFA match order M73-M88, confirmed fixtures as of Jun 27 2026
+    # API takes priority — this fills in only when API returns NULL
+    "M73": ("South Africa",  "Canada"),       # Jun 28
+    "M74": ("Germany",       "Paraguay"),     # Jun 29 - E1 vs best 3rd A/B/C/D/F
+    "M75": ("Netherlands",   "Morocco"),      # Jun 29 - F1 vs C2
+    "M76": ("Brazil",        "Japan"),        # Jun 29 - C1 vs F2
+    "M77": ("France",        "Sweden"),       # Jun 30 - I1 vs best 3rd C/D/F/G/H
+    "M78": ("Ivory Coast",   "Norway"),       # Jun 30 - E2 vs I2
+    "M79": ("Mexico",        "Scotland"),     # Jul 1  - A1 vs best 3rd C/E/F/H/I
+    "M80": ("England",       "Senegal"),      # Jul 1  - L1 vs best 3rd E/H/I/J/K
+    "M81": ("Belgium",       "Ecuador"),      # Jul 1  - G1 vs best 3rd A/E/H/I/J
+    "M82": ("USA",           "Bosnia"),       # Jul 2  - D1 vs best 3rd B/C/E/F/H/I
+    "M83": ("Australia",     "Egypt"),        # Jul 2  - D2 vs G1
+    "M84": ("Spain",         "Portugal"),     # Jul 3  - H1 vs K2
+    "M85": ("Switzerland",   "Colombia"),     # Jul 3  - B1 vs K1
+    "M86": ("Argentina",     "Cape Verde"),   # Jul 3  - J1 vs H2
+    "M87": ("Austria",       "Croatia"),      # Jul 3  - J2 vs best 3rd D/E/I/J/L
+    "M88": ("Ghana",         "South Korea"),  # Jul 4  - L2 vs best 3rd
 }
 
 R32_SLOTS = [
-    {"match_no": 1,  "date": "Sun, 28 Jun, 21:00", "id_tag": "M73"},
-    {"match_no": 2,  "date": "Mon, 29 Jun, 19:00", "id_tag": "M74"},
-    {"match_no": 3,  "date": "Mon, 29 Jun, 22:30", "id_tag": "M75"},
-    {"match_no": 4,  "date": "Tue, 30 Jun, 03:00", "id_tag": "M76"},
-    {"match_no": 5,  "date": "Tue, 30 Jun, 19:00", "id_tag": "M77"},
-    {"match_no": 6,  "date": "Tue, 30 Jun, 23:00", "id_tag": "M78"},
-    {"match_no": 7,  "date": "Wed, 1 Jul, 03:00",  "id_tag": "M79"},
-    {"match_no": 8,  "date": "Wed, 1 Jul, 18:00",  "id_tag": "M80"},
-    {"match_no": 9,  "date": "Wed, 1 Jul, 22:00",  "id_tag": "M81"},
-    {"match_no": 10, "date": "Thu, 2 Jul, 02:00",  "id_tag": "M82"},
-    {"match_no": 11, "date": "Thu, 2 Jul, 21:00",  "id_tag": "M83"},
-    {"match_no": 12, "date": "Fri, 3 Jul, 01:00",  "id_tag": "M84"},
-    {"match_no": 13, "date": "Fri, 3 Jul, 05:00",  "id_tag": "M85"},
-    {"match_no": 14, "date": "Fri, 3 Jul, 20:00",  "id_tag": "M86"},
-    {"match_no": 15, "date": "Sat, 4 Jul, 00:00",  "id_tag": "M87"},
-    {"match_no": 16, "date": "Sat, 4 Jul, 03:30",  "id_tag": "M88"},
+    {"match_no": 1,  "date": "Sun, 28 Jun, 3:00 PM ET",  "id_tag": "M73"},
+    {"match_no": 2,  "date": "Mon, 29 Jun, 1:00 PM ET",  "id_tag": "M74"},
+    {"match_no": 3,  "date": "Mon, 29 Jun, 9:00 PM ET",  "id_tag": "M75"},
+    {"match_no": 4,  "date": "Mon, 29 Jun, 5:00 PM ET",  "id_tag": "M76"},
+    {"match_no": 5,  "date": "Tue, 30 Jun, 1:00 PM ET",  "id_tag": "M77"},
+    {"match_no": 6,  "date": "Tue, 30 Jun, 5:00 PM ET",  "id_tag": "M78"},
+    {"match_no": 7,  "date": "Wed, 1 Jul, 9:00 PM ET",   "id_tag": "M79"},
+    {"match_no": 8,  "date": "Wed, 1 Jul, 12:00 PM ET",  "id_tag": "M80"},
+    {"match_no": 9,  "date": "Wed, 1 Jul, 4:00 PM ET",   "id_tag": "M81"},
+    {"match_no": 10, "date": "Thu, 2 Jul, 8:00 PM ET",   "id_tag": "M82"},
+    {"match_no": 11, "date": "Thu, 2 Jul, 2:00 PM ET",   "id_tag": "M83"},
+    {"match_no": 12, "date": "Fri, 3 Jul, 9:00 PM ET",   "id_tag": "M84"},
+    {"match_no": 13, "date": "Fri, 3 Jul, 2:00 PM ET",   "id_tag": "M85"},
+    {"match_no": 14, "date": "Fri, 3 Jul, 6:00 PM ET",   "id_tag": "M86"},
+    {"match_no": 15, "date": "Fri, 3 Jul, 9:30 PM ET",   "id_tag": "M87"},
+    {"match_no": 16, "date": "Sat, 4 Jul, 11:00 AM ET",  "id_tag": "M88"},
 ]
 
 BRACKET_MAPPING = {
@@ -267,56 +269,115 @@ def fetch_group_standings():
 
 @st.cache_data(ttl=1800)
 def fetch_all_knockout_matches():
+    """
+    Fetch all knockout matches from the API.
+    Strategy:
+      1. Pull all matches, exclude group stage by keyword.
+      2. Sort chronologically within each round.
+      3. Map to M-tags by position within round.
+      4. For any team the API returns as NULL/empty, fill from R32_FALLBACK.
+      5. For rounds not yet in the API, fill entirely from fallback.
+    The API is always the primary source — fallback only patches NULLs.
+    """
     headers = {'X-Auth-Token': API_KEY}
     try:
         response = requests.get(f"{MATCHES_URL}?season=2026", headers=headers, timeout=12)
         if response.status_code != 200:
+            st.warning(f"⚠️ API returned HTTP {response.status_code}")
             return {}
         all_matches = response.json().get('matches', [])
     except Exception as e:
+        st.warning(f"⚠️ Could not fetch match data: {e}")
         return {}
 
-    ko_matches = [m for m in all_matches if not is_group_stage(m.get('stage',''))]
-    ko_matches.sort(key=lambda x: x.get('utcDate','9999-99-99'))
-    raw_stages = list({m.get('stage','?') for m in ko_matches})
+    # Separate by stage, exclude group stage and third-place
+    knockout_stage_map = {}
+    for m in all_matches:
+        stage = str(m.get('stage','')).upper()
+        if not is_group_stage(stage):
+            knockout_stage_map.setdefault(stage, []).append(m)
 
+    # Sort each stage chronologically
+    for stage in knockout_stage_map:
+        knockout_stage_map[stage].sort(key=lambda x: x.get('utcDate','9999'))
+
+    raw_stages = list(knockout_stage_map.keys())
+
+    # Map API stage names to our internal round names (handles LAST_32, ROUND_OF_32, etc.)
+    def find_stage_matches(target_size):
+        """Find the API stage whose match count best fits the expected round size."""
+        # Try exact size match first
+        for stage, matches in knockout_stage_map.items():
+            if len(matches) == target_size:
+                return matches
+        # Try closest size
+        best = []
+        for stage, matches in knockout_stage_map.items():
+            if len(matches) <= target_size and len(matches) > len(best):
+                best = matches
+        return best
+
+    # Build chronological list per round using size-based matching
     tag_to_match = {}
-    cursor = 0
+    used_stages = set()
+
     for round_name, size, tags in ROUND_SIZES:
-        round_matches = ko_matches[cursor:cursor + size]
-        cursor += size
+        # Find the right API stage by size
+        round_matches = []
+        for stage, matches in knockout_stage_map.items():
+            if stage not in used_stages and len(matches) == size:
+                round_matches = matches
+                used_stages.add(stage)
+                break
+
+        # If no exact match found, try partial
+        if not round_matches:
+            for stage, matches in knockout_stage_map.items():
+                if stage not in used_stages and len(matches) > 0:
+                    round_matches = matches
+                    used_stages.add(stage)
+                    break
+
         for i, tag in enumerate(tags):
+            fb = R32_FALLBACK.get(tag, ("TBD","TBD"))
             if i < len(round_matches):
                 m = round_matches[i]
-                h_raw = m.get('homeTeam',{}).get('name') or m.get('homeTeam',{}).get('shortName') or ''
-                a_raw = m.get('awayTeam',{}).get('name') or m.get('awayTeam',{}).get('shortName') or ''
-                h = clean_team(h_raw) if h_raw.strip() else "TBD"
-                a = clean_team(a_raw) if a_raw.strip() else "TBD"
-                if h == "TBD" or a == "TBD":
-                    fb = R32_FALLBACK.get(tag, ("TBD","TBD"))
-                    if h == "TBD": h = fb[0]
-                    if a == "TBD": a = fb[1]
+                h_raw = (m.get('homeTeam',{}).get('name') or
+                         m.get('homeTeam',{}).get('shortName') or '').strip()
+                a_raw = (m.get('awayTeam',{}).get('name') or
+                         m.get('awayTeam',{}).get('shortName') or '').strip()
+                h = clean_team(h_raw) if h_raw else "TBD"
+                a = clean_team(a_raw) if a_raw else "TBD"
+                # Fill NULLs from fallback
+                if h == "TBD": h = fb[0]
+                if a == "TBD": a = fb[1]
                 tag_to_match[tag] = {
-                    "home": h, "away": a,
-                    "status": m.get('status','SCHEDULED'),
-                    "score":  m.get('score',{}),
-                    "winner": m.get('score',{}).get('winner'),
+                    "home":      h,
+                    "away":      a,
+                    "status":    m.get('status','SCHEDULED'),
+                    "score":     m.get('score',{}),
+                    "winner":    m.get('score',{}).get('winner'),
                     "stage_raw": m.get('stage',''),
-                    "api_id": m.get('id'),
+                    "api_id":    m.get('id'),
                 }
             else:
-                fb = R32_FALLBACK.get(tag, ("TBD","TBD"))
+                # API doesn't have this match yet — use fallback entirely
                 tag_to_match[tag] = {
-                    "home": fb[0], "away": fb[1], "status": "SCHEDULED",
-                    "score":{},"winner":None,"stage_raw":"","api_id":None
+                    "home": fb[0], "away": fb[1],
+                    "status": "SCHEDULED", "score": {},
+                    "winner": None, "stage_raw": "", "api_id": None
                 }
 
     tag_to_match["__debug__"] = {
-        "total_ko_matches": len(ko_matches),
+        "total_matches_from_api": len(all_matches),
+        "knockout_matches_by_stage": {s: len(v) for s, v in knockout_stage_map.items()},
         "raw_stages": raw_stages,
-        "sample": [{"utcDate": m.get('utcDate'), "stage": m.get('stage'),
-                    "home": m.get('homeTeam',{}).get('name','?'),
-                    "away": m.get('awayTeam',{}).get('name','?')} for m in ko_matches[:6]]
+        "sample_r32": [
+            {"utcDate": m.get('utcDate'), "stage": m.get('stage'),
+             "home": m.get('homeTeam',{}).get('name','?'),
+             "away": m.get('awayTeam',{}).get('name','?')}
+            for m in (list(knockout_stage_map.values())[0] if knockout_stage_map else [])[:6]
+        ]
     }
     return tag_to_match
 
