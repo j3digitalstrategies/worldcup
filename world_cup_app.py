@@ -64,8 +64,6 @@ CLEAN_TEAM_MAP = {
     "england": "England", "croatia": "Croatia", "ghana": "Ghana", "panama": "Panama"
 }
 
-# Fallback fixture table — used when API returns NULL for a team.
-# API takes priority when it has real data. Update TBDs as games are confirmed.
 R32_FALLBACK = {
     "M73": ("South Africa", "Canada"),
     "M74": ("Brazil",       "Japan"),
@@ -85,7 +83,6 @@ R32_FALLBACK = {
     "M88": ("TBD",          "TBD"),
 }
 
-# Slot schedule: dates/times only — teams come from API (with fallback above)
 R32_SLOTS = [
     {"match_no": 1,  "date": "Sun, 28 Jun, 21:00", "id_tag": "M73"},
     {"match_no": 2,  "date": "Mon, 29 Jun, 19:00", "id_tag": "M74"},
@@ -113,7 +110,6 @@ BRACKET_MAPPING = {
     "FINAL":          {"M104": ("M101","M102")}
 }
 
-# How many matches per round — used to slice the chronologically sorted API list
 ROUND_SIZES = [
     ("ROUND_OF_32",    16, ["M73","M74","M75","M76","M77","M78","M79","M80","M81","M82","M83","M84","M85","M86","M87","M88"]),
     ("ROUND_OF_16",     8, ["M89","M90","M91","M92","M93","M94","M95","M96"]),
@@ -122,8 +118,9 @@ ROUND_SIZES = [
     ("FINAL",           1, ["M104"]),
 ]
 
-# Group stage stage names to EXCLUDE from knockout list
 GROUP_STAGE_KEYWORDS = {"GROUP", "REGULAR", "PRELIMINARY", "QUALIFYING", "PLAY_OFF_ROUND", "THIRD_PLACE"}
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 def standardize_string(val):
     if val is None: return ""
@@ -139,67 +136,92 @@ def is_group_stage(stage_str):
     s = str(stage_str).upper()
     return any(kw in s for kw in GROUP_STAGE_KEYWORDS)
 
-def connect_to_sheet(tab_name="sheet1", retries=3):
+# ── FIX 1: Cache the gspread client — auth happens ONCE, not every call ────────
+@st.cache_resource
+def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+    return gspread.authorize(creds)
+
+def get_spreadsheet():
+    return get_gspread_client().open_by_key(SHEET_KEY)
+
+def get_worksheet(tab_name, retries=3):
     for attempt in range(retries):
         try:
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
-            client = gspread.authorize(creds)
-            spreadsheet = client.open_by_key(SHEET_KEY)
-            if tab_name == "Knockout_Picks":
-                try:
-                    return spreadsheet.worksheet("Knockout_Picks")
-                except gspread.exceptions.WorksheetNotFound:
+            spreadsheet = get_spreadsheet()
+            if tab_name == "sheet1":
+                return spreadsheet.sheet1
+            try:
+                return spreadsheet.worksheet(tab_name)
+            except gspread.exceptions.WorksheetNotFound:
+                if tab_name == "Knockout_Picks":
                     ws = spreadsheet.add_worksheet(title="Knockout_Picks", rows="1000", cols="7")
                     ws.append_row(["Timestamp","Name","Match_ID","Home_Score","Away_Score","Winner","Stage"])
                     return ws
-            if tab_name == "Chat_Data":
-                try:
-                    return spreadsheet.worksheet("Chat_Data")
-                except gspread.exceptions.WorksheetNotFound:
+                elif tab_name == "Chat_Data":
                     ws = spreadsheet.add_worksheet(title="Chat_Data", rows="1000", cols="3")
                     ws.append_row(["Timestamp","User","Message"])
                     return ws
-            return spreadsheet.sheet1 if tab_name == "sheet1" else spreadsheet.worksheet(tab_name)
+                raise
         except gspread.exceptions.APIError as e:
-            if attempt < retries - 1:
+            if "429" in str(e) and attempt < retries - 1:
+                time.sleep(5 * (attempt + 1))
+            elif attempt < retries - 1:
                 time.sleep(2 ** attempt)
             else:
                 raise e
 
-def get_registered_players(retries=3):
-    for attempt in range(retries):
-        try:
-            sheet = connect_to_sheet("sheet1")
-            records = sheet.get_all_records()
-            if records:
-                df = pd.DataFrame(records)
-                if 'Name' in df.columns:
-                    return sorted(list(df['Name'].astype(str).str.strip().unique()))
-            return []
-        except gspread.exceptions.APIError:
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
-            else:
-                st.error("⚠️ Could not load player list. Please refresh.")
-                return []
-        except Exception as e:
-            st.error(f"⚠️ Unexpected error loading players: {e}")
-            return []
+# ── FIX 2: Cache ALL sheet reads — shared across all users ────────────────────
 
-def save_pick_with_retry(ko_sheet, row_i, new_row, retries=3):
+@st.cache_data(ttl=600)
+def load_player_names():
+    """Cached 10 min — players almost never change."""
+    ws = get_worksheet("sheet1")
+    names = ws.col_values(2)[1:]  # Only fetch column B, skip header
+    return sorted([n.strip() for n in names if n.strip()])
+
+@st.cache_data(ttl=30)
+def load_knockout_picks():
+    """Cached 30 sec — shared read for all users."""
+    ws = get_worksheet("Knockout_Picks")
+    records = ws.get_all_records()
+    return records
+
+@st.cache_data(ttl=60)
+def load_group_picks():
+    """Cached 60 sec — group stage is now closed."""
+    ws = get_worksheet("sheet1")
+    return ws.get_all_records()
+
+@st.cache_data(ttl=30)
+def load_chat():
+    """Cached 30 sec."""
+    ws = get_worksheet("Chat_Data")
+    return ws.get_all_records()
+
+def save_pick(new_row, retries=3):
+    """
+    FIX 3: Always APPEND, never read-then-update.
+    Concurrency-safe: no two users can overwrite each other.
+    Deduplication on display: keep latest row per (Name, Match_ID).
+    """
     for attempt in range(retries):
         try:
-            if row_i != -1:
-                ko_sheet.update(range_name=f"A{row_i}:G{row_i}", values=[new_row])
-            else:
-                ko_sheet.append_row(new_row)
+            ws = get_worksheet("Knockout_Picks")
+            ws.append_row(new_row)
+            # Invalidate the cache so next load sees the new row
+            load_knockout_picks.clear()
             return True
-        except gspread.exceptions.APIError:
-            if attempt < retries - 1:
+        except gspread.exceptions.APIError as e:
+            if "429" in str(e) and attempt < retries - 1:
+                time.sleep(5 * (attempt + 1))
+            elif attempt < retries - 1:
                 time.sleep(2 ** attempt)
             else:
                 return False
+
+# ── API fetchers (unchanged, already cached) ───────────────────────────────────
 
 @st.cache_data(ttl=10800)
 def fetch_group_standings():
@@ -245,32 +267,19 @@ def fetch_group_standings():
 
 @st.cache_data(ttl=1800)
 def fetch_all_knockout_matches():
-    """
-    Fetch all matches, exclude group stage by keyword, sort chronologically,
-    then assign to M-tags in order. Works regardless of what stage names the API uses.
-    Returns dict: { 'M73': { home, away, status, score, winner, stage_raw }, ... }
-    """
     headers = {'X-Auth-Token': API_KEY}
     try:
         response = requests.get(f"{MATCHES_URL}?season=2026", headers=headers, timeout=12)
         if response.status_code != 200:
-            st.warning(f"⚠️ Matches API returned HTTP {response.status_code}")
             return {}
         all_matches = response.json().get('matches', [])
     except Exception as e:
-        st.warning(f"⚠️ Could not fetch match data: {e}")
         return {}
 
-    # Exclude group stage matches — everything else is knockout
     ko_matches = [m for m in all_matches if not is_group_stage(m.get('stage',''))]
     ko_matches.sort(key=lambda x: x.get('utcDate','9999-99-99'))
-
-    # Store raw stage names so we can debug
     raw_stages = list({m.get('stage','?') for m in ko_matches})
 
-    # Now bucket them by round size chronologically
-    # football-data.org orders: R32 first, then R16, QF, SF, Final
-    # We just slice in order — first 16 = R32, next 8 = R16, etc.
     tag_to_match = {}
     cursor = 0
     for round_name, size, tags in ROUND_SIZES:
@@ -283,59 +292,55 @@ def fetch_all_knockout_matches():
                 a_raw = m.get('awayTeam',{}).get('name') or m.get('awayTeam',{}).get('shortName') or ''
                 h = clean_team(h_raw) if h_raw.strip() else "TBD"
                 a = clean_team(a_raw) if a_raw.strip() else "TBD"
-                # Apply fallback for R32 if API has NULLs
                 if h == "TBD" or a == "TBD":
                     fb = R32_FALLBACK.get(tag, ("TBD","TBD"))
                     if h == "TBD": h = fb[0]
                     if a == "TBD": a = fb[1]
                 tag_to_match[tag] = {
-                    "home":      h,
-                    "away":      a,
-                    "status":    m.get('status','SCHEDULED'),
-                    "score":     m.get('score',{}),
-                    "winner":    m.get('score',{}).get('winner'),
+                    "home": h, "away": a,
+                    "status": m.get('status','SCHEDULED'),
+                    "score":  m.get('score',{}),
+                    "winner": m.get('score',{}).get('winner'),
                     "stage_raw": m.get('stage',''),
-                    "api_id":    m.get('id'),
+                    "api_id": m.get('id'),
                 }
             else:
-                # No API match at all — use fallback
                 fb = R32_FALLBACK.get(tag, ("TBD","TBD"))
                 tag_to_match[tag] = {
                     "home": fb[0], "away": fb[1], "status": "SCHEDULED",
                     "score":{},"winner":None,"stage_raw":"","api_id":None
                 }
 
-    # Attach debug info
     tag_to_match["__debug__"] = {
         "total_ko_matches": len(ko_matches),
         "raw_stages": raw_stages,
-        "sample": [
-            {"utcDate": m.get('utcDate'), "stage": m.get('stage'),
-             "home": m.get('homeTeam',{}).get('name','?'),
-             "away": m.get('awayTeam',{}).get('name','?')}
-            for m in ko_matches[:6]
-        ]
+        "sample": [{"utcDate": m.get('utcDate'), "stage": m.get('stage'),
+                    "home": m.get('homeTeam',{}).get('name','?'),
+                    "away": m.get('awayTeam',{}).get('name','?')} for m in ko_matches[:6]]
     }
     return tag_to_match
 
 # ── App setup ──────────────────────────────────────────────────────────────────
+
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
 page = st.sidebar.radio("Navigation Menu", [
     "Leaderboard", "Knockout Predictions", "Group Predictions (Closed)", "Rules & Chat Forum"
 ])
-registered_players = get_registered_players()
 
-# Keep last known good player list in session state
-# so a transient API failure doesn't wipe the login mid-session
-if registered_players:
-    st.session_state["player_list_cache"] = registered_players
-elif "player_list_cache" in st.session_state:
+# Load player names from cache — one read shared by everyone
+try:
+    registered_players = load_player_names()
+    if registered_players:
+        st.session_state["player_list_cache"] = registered_players
+except Exception:
+    registered_players = []
+
+if not registered_players and "player_list_cache" in st.session_state:
     registered_players = st.session_state["player_list_cache"]
 
 with st.sidebar:
     st.header("Player Login")
     if registered_players:
-        # Preserve selected name across reruns
         prev = st.session_state.get("selected_player", "-- Select Profile --")
         opts = ["-- Select Profile --"] + registered_players
         default_idx = opts.index(prev) if prev in opts else 0
@@ -385,17 +390,15 @@ if page == "Leaderboard":
         tag_to_match = fetch_all_knockout_matches()
 
         try:
-            sheet = connect_to_sheet("sheet1")
-            records = sheet.get_all_records()
-            group_df = pd.DataFrame(records) if records else pd.DataFrame()
+            raw_group_records = load_group_picks()
+            group_df = pd.DataFrame(raw_group_records) if raw_group_records else pd.DataFrame()
         except Exception as e:
             st.error(f"❌ Could not load group picks: {e}")
             group_df = pd.DataFrame()
 
         try:
-            ko_sheet = connect_to_sheet("Knockout_Picks")
-            ko_records = ko_sheet.get_all_records()
-            ko_df = pd.DataFrame(ko_records) if ko_records else pd.DataFrame()
+            raw_ko_records = load_knockout_picks()
+            ko_df = pd.DataFrame(raw_ko_records) if raw_ko_records else pd.DataFrame()
         except Exception as e:
             st.warning(f"⚠️ Could not load knockout picks: {e}")
             ko_df = pd.DataFrame()
@@ -422,6 +425,11 @@ if page == "Leaderboard":
         group_df = group_df.rename(columns=rename_dict)
         if 'Status' not in group_df.columns:
             group_df['Status'] = 'Pending'
+
+        # FIX 4: Deduplicate knockout picks — keep latest row per (Name, Match_ID)
+        if not ko_df.empty and 'Timestamp' in ko_df.columns:
+            ko_df = ko_df.sort_values('Timestamp').groupby(
+                ['Name','Match_ID'], as_index=False).last()
 
         paid_count = group_df['Status'].astype(str).str.strip().str.lower().eq('paid').sum()
         st.metric("💰 Total Pool Pot", f"${paid_count * 10} USD")
@@ -487,17 +495,11 @@ if page == "Leaderboard":
             cols[5].download_button("📥 CSV", data=csv,
                 file_name=f"{row['Name']}_picks.csv", key=f"dl_{row['Name']}")
 
-        with st.expander("🛠️ Diagnostics — click to debug API data"):
-            st.write("**Knockout matches from API:**")
+        with st.expander("🛠️ Diagnostics"):
             debug = tag_to_match.get("__debug__", {})
-            st.write(f"Total knockout matches found: `{debug.get('total_ko_matches', '?')}`")
-            st.write(f"Stage names seen: `{debug.get('raw_stages', [])}`")
-            st.write("First 6 matches:")
+            st.write(f"Total knockout matches from API: `{debug.get('total_ko_matches','?')}`")
+            st.write(f"Stage names: `{debug.get('raw_stages',[])}`")
             st.json(debug.get("sample", []))
-            st.write("**Tag → Match mapping (R32):**")
-            r32_preview = {k: {"home": v["home"], "away": v["away"], "status": v["status"]}
-                           for k, v in tag_to_match.items() if k.startswith("M") and k != "M10"}
-            st.json(r32_preview)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: KNOCKOUT PREDICTIONS
@@ -511,18 +513,29 @@ elif page == "Knockout Predictions":
         st.info("👈 Authenticate to open your bracket.")
     else:
         st.success(f"Log-In User: **{user_name}**")
+
+        # FIX 5: Read knockout picks ONCE from cache, never inside draw_match_ui
         try:
-            ko_sheet = connect_to_sheet("Knockout_Picks")
+            raw_ko = load_knockout_picks()
+            all_ko_df = pd.DataFrame(raw_ko) if raw_ko else pd.DataFrame()
         except Exception as e:
-            st.error(f"❌ Could not connect to picks sheet: {e}")
+            st.error(f"❌ Could not load picks: {e}")
             st.stop()
 
-        user_ko_df = pd.DataFrame(ko_sheet.get_all_records())
+        # Deduplicate — keep latest per (Name, Match_ID)
+        if not all_ko_df.empty and 'Timestamp' in all_ko_df.columns:
+            all_ko_df = all_ko_df.sort_values('Timestamp').groupby(
+                ['Name','Match_ID'], as_index=False).last()
+
+        user_ko_df = all_ko_df[
+            all_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()
+        ] if not all_ko_df.empty else pd.DataFrame()
+
         if not user_ko_df.empty:
-            user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
             for _, row in user_ko_df.iterrows():
                 st.session_state.ko_winners[str(row['Match_ID'])] = str(row['Winner'])
 
+        # FIX 6: draw_match_ui takes pre-loaded data — zero sheet reads inside
         def draw_match_ui(tag, home, away, is_locked, match_no, date, stage):
             exist_row = user_ko_df[user_ko_df['Match_ID'].astype(str) == tag] \
                 if not user_ko_df.empty else pd.DataFrame()
@@ -559,13 +572,10 @@ elif page == "Knockout Predictions":
                 sub_c1, sub_c2 = st.columns([2,2])
                 with sub_c1:
                     if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
-                        existing = ko_sheet.get_all_records()
-                        row_i = next((i + 2 for i, r in enumerate(existing)
-                                      if str(r.get('Name','')).lower() == user_name.lower()
-                                      and str(r.get('Match_ID','')) == tag), -1)
                         new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                   user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
-                        if save_pick_with_retry(ko_sheet, row_i, new_row):
+                                   user_name.strip(), tag,
+                                   int(h_score), int(a_score), chosen_winner, stage]
+                        if save_pick(new_row):
                             st.toast("✅ Saved!")
                             st.rerun()
                         else:
@@ -578,8 +588,8 @@ elif page == "Knockout Predictions":
         for slot in R32_SLOTS:
             tag  = slot["id_tag"]
             info = tag_to_match.get(tag, {})
-            home = info.get("home", "TBD")
-            away = info.get("away", "TBD")
+            home = info.get("home","TBD")
+            away = info.get("away","TBD")
             is_locked = info.get("status") not in ["TIMED","SCHEDULED",None,""]
             draw_match_ui(tag, home, away, is_locked, slot["match_no"], slot["date"], "ROUND_OF_32")
 
@@ -604,18 +614,17 @@ elif page == "Knockout Predictions":
             tb_default = int(user_ko_df[user_ko_df['Match_ID'] == 'TIE_BREAKER']['Home_Score'].iloc[0])
         tb_val = st.number_input("Total goals in knockout stage:", min_value=0, value=tb_default)
         if st.button("Submit Tie-Breaker"):
-            if save_pick_with_retry(ko_sheet, -1,
-                [datetime.now().strftime("%Y-%m-%d"), user_name, "TIE_BREAKER", tb_val, 0, "N/A", "TIE"]):
+            new_row = [datetime.now().strftime("%Y-%m-%d"), user_name, "TIE_BREAKER", tb_val, 0, "N/A", "TIE"]
+            if save_pick(new_row):
                 st.success("Tie-breaker submitted!")
                 st.rerun()
             else:
                 st.error("❌ Failed to save.")
 
-        with st.expander("🛠️ API Debug — what is the API sending?"):
+        with st.expander("🛠️ API Debug"):
             debug = tag_to_match.get("__debug__", {})
-            st.write(f"Total knockout matches from API: `{debug.get('total_ko_matches','?')}`")
-            st.write(f"Stage names seen: `{debug.get('raw_stages', [])}`")
-            st.write("First 6 knockout matches:")
+            st.write(f"Total knockout matches: `{debug.get('total_ko_matches','?')}`")
+            st.write(f"Stage names: `{debug.get('raw_stages',[])}`")
             st.json(debug.get("sample", []))
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -651,16 +660,16 @@ elif page == "Rules & Chat Forum":
                 st.error("Message cannot be empty.")
             else:
                 try:
-                    chat_sheet = connect_to_sheet("Chat_Data")
-                    chat_sheet.append_row([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name, comment])
+                    ws = get_worksheet("Chat_Data")
+                    ws.append_row([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name, comment])
+                    load_chat.clear()
                     st.success("Message posted!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Could not post message: {e}")
 
     try:
-        chat_sheet = connect_to_sheet("Chat_Data")
-        messages = chat_sheet.get_all_records()
+        messages = load_chat()
         if messages:
             for msg in reversed(messages[-20:]):
                 st.markdown(f"**{msg.get('User','')}** ({msg.get('Timestamp','')})")
