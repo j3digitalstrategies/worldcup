@@ -203,7 +203,8 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-if "ko_winners" not in st.session_state: st.session_state.ko_winners = {}
+if "ko_winners" not in st.session_state: 
+    st.session_state.ko_winners = {}
 
 if page == "Knockout Predictions":
     st.title("🏆 Interactive Knockout Bracket Engine")
@@ -220,6 +221,10 @@ if page == "Knockout Predictions":
         user_ko_df = pd.DataFrame(ko_sheet.get_all_records())
         if not user_ko_df.empty:
             user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
+            
+            # Pre-load session state with saved picks so brackets cascade immediately upon login
+            for _, row in user_ko_df.iterrows():
+                st.session_state.ko_winners[str(row['Match_ID'])] = str(row['Winner'])
 
         raw_matches = fetch_live_matches_api()
 
@@ -229,50 +234,42 @@ if page == "Knockout Predictions":
             default_a = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
             default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home
             
-            is_ready = "TBD" not in [home, away]
-            border_css = "2px solid #2ecc71" if is_ready else "1px solid #e0e0e0"
-
             with st.container():
-                st.markdown(f"""<style>
-                    .match-container-{tag} {{ border: {border_css}; padding: 15px; border-radius: 8px; margin-bottom: 10px; }}
-                </style>""", unsafe_allow_html=True)
-                
-                with st.container():
-                    st.markdown(f'<div class="match-container-{tag}">', unsafe_allow_html=True)
-                    if date: st.caption(f"📅 Match {match_no} • {date}")
-                    c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
-                    with c1:
-                        st.markdown(f"**{home}**")
-                        h_score = st.number_input("Goals", min_value=0, value=default_h, key=f"h_s_{tag}", disabled=is_locked)
-                    with c2: st.markdown("<br><p style='text-align:center;'>VS</p>", unsafe_allow_html=True)
-                    with c3:
-                        st.markdown(f"**{away}**")
-                        a_score = st.number_input("Goals", min_value=0, value=default_a, key=f"a_s_{tag}", disabled=is_locked)
-                    with c4:
-                        if h_score == a_score:
-                            chosen_winner = st.selectbox("Advances via PKs:", [home, away], index=[home, away].index(default_w) if default_w in [home, away] else 0, key=f"pk_w_{tag}", disabled=is_locked)
-                        else:
-                            chosen_winner = home if h_score > a_score else away
-                            st.markdown(f"<br><p><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
+                st.write("---") # Replaced the green box with a simple separator
+                if date: st.caption(f"📅 Match {match_no} • {date}")
+                c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
+                with c1:
+                    st.markdown(f"**{home}**")
+                    h_score = st.number_input("Goals", min_value=0, value=default_h, key=f"h_s_{tag}", disabled=is_locked)
+                with c2: 
+                    st.markdown("<br><p style='text-align:center;'>VS</p>", unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"**{away}**")
+                    a_score = st.number_input("Goals", min_value=0, value=default_a, key=f"a_s_{tag}", disabled=is_locked)
+                with c4:
+                    if h_score == a_score:
+                        chosen_winner = st.selectbox("Advances via PKs:", [home, away], index=[home, away].index(default_w) if default_w in [home, away] else 0, key=f"pk_w_{tag}", disabled=is_locked)
+                    else:
+                        chosen_winner = home if h_score > a_score else away
+                        st.markdown(f"<br><p><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
 
-                    st.session_state.ko_winners[tag] = chosen_winner
-                    
-                    sub_c1, sub_c2 = st.columns([2, 2])
-                    with sub_c1:
-                        if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
-                            row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
-                            new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
-                            success = save_pick_with_retry(ko_sheet, row_i, new_row)
-                            if success:
-                                st.toast("✅ Saved!")
-                                st.rerun()
-                            else:
-                                st.error("❌ Failed to save.")
-                    
-                    with sub_c2:
-                        if not exist_row.empty:
-                            st.markdown("🟢 **Submitted**")
-                    st.markdown('</div>', unsafe_allow_html=True)
+                st.session_state.ko_winners[tag] = chosen_winner
+                
+                sub_c1, sub_c2 = st.columns([2, 2])
+                with sub_c1:
+                    if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
+                        row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
+                        new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
+                        success = save_pick_with_retry(ko_sheet, row_i, new_row)
+                        if success:
+                            st.toast("✅ Saved!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to save.")
+                
+                with sub_c2:
+                    if not exist_row.empty:
+                        st.markdown("🟢 **Submitted**")
 
         st.subheader("1️⃣ Round of 32")
         api_r32 = sorted([m for m in raw_matches if m.get('stage') == "ROUND_OF_32"], key=lambda x: x.get('utcDate', ''))
@@ -285,7 +282,10 @@ if page == "Knockout Predictions":
         for stage, label in [("ROUND_OF_16", "2️⃣ R16"), ("QUARTER_FINALS", "3️⃣ QF"), ("SEMI_FINALS", "4️⃣ SF"), ("FINAL", "5️⃣ Final")]:
             st.subheader(label)
             for m_id, src in BRACKET_MAPPING.get(stage, {}).items():
-                draw_match_ui(m_id, st.session_state.ko_winners.get(src[0], f"Winner {src[0]}"), st.session_state.ko_winners.get(src[1], f"Winner {src[1]}"), False, 0, None, stage)
+                # Dynamically pulls the winners from the previous round
+                h_team = st.session_state.ko_winners.get(src[0], f"Winner {src[0]}")
+                a_team = st.session_state.ko_winners.get(src[1], f"Winner {src[1]}")
+                draw_match_ui(m_id, h_team, a_team, False, 0, None, stage)
 
         st.write("---")
         st.subheader("🏁 Tie-Breaker")
@@ -309,16 +309,31 @@ elif page == "Leaderboard":
 
     def calc_score(row):
         score = 0
-        u_picks = all_picks[all_picks['Name'].str.lower() == str(row['Name']).lower()]
+        u_picks = all_picks[all_picks['Name'].astype(str).str.lower() == str(row['Name']).lower()]
         for _, p in u_picks.iterrows():
             m = next((m for m in live_matches if str(m.get('id')) == str(p['Match_ID'])), None)
-            if m and m.get('status') == 'FINISHED':
+            if m and m.get('status') in ['FINISHED', 'AWARDED']:
                 ft = m.get('score', {}).get('fullTime', {})
-                if str(p['Home_Score']) == str(ft.get('home')): score += 1
-                if str(p['Away_Score']) == str(ft.get('away')): score += 1
-                actual_winner = "HOME" if ft.get('home') > ft.get('away') else "AWAY"
-                pick_winner = "HOME" if p['Home_Score'] > p['Away_Score'] else "AWAY"
-                if actual_winner == pick_winner: score += 1
+                
+                # Point for exact home score
+                if ft and ft.get('home') is not None and str(p['Home_Score']) == str(ft.get('home')): 
+                    score += 1
+                    
+                # Point for exact away score
+                if ft and ft.get('away') is not None and str(p['Away_Score']) == str(ft.get('away')): 
+                    score += 1
+
+                # Point for correct winner (Handles penalty shootout scenarios via API 'winner' flag)
+                api_winner = m.get('score', {}).get('winner')
+                home_team = CLEAN_TEAM_MAP.get(standardize_string(m.get('homeTeam', {}).get('name')), str(m.get('homeTeam', {}).get('name')))
+                away_team = CLEAN_TEAM_MAP.get(standardize_string(m.get('awayTeam', {}).get('name')), str(m.get('awayTeam', {}).get('name')))
+                
+                actual_advancing = None
+                if api_winner == 'HOME_TEAM': actual_advancing = home_team
+                elif api_winner == 'AWAY_TEAM': actual_advancing = away_team
+
+                if actual_advancing and standardize_string(str(p['Winner'])) == standardize_string(actual_advancing): 
+                    score += 1
         return score
 
     try:
@@ -330,4 +345,4 @@ elif page == "Leaderboard":
 
 elif page == "Rules & Chat Forum":
     st.title("📜 Pool Rules")
-    st.write("**Formula:** 1 pt/correct winner, 1 pt/exact home score, 1 pt/exact away score.")
+    st.write("**Formula:** 1 pt/correct winner, 1 pt/exact home score, 1 pt/exact away score. (Max 3 points per match)")
