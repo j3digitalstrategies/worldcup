@@ -222,7 +222,6 @@ if page == "Knockout Predictions":
         if not user_ko_df.empty:
             user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
             
-            # Pre-load session state with saved picks so brackets cascade immediately upon login
             for _, row in user_ko_df.iterrows():
                 st.session_state.ko_winners[str(row['Match_ID'])] = str(row['Winner'])
 
@@ -235,7 +234,7 @@ if page == "Knockout Predictions":
             default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home
             
             with st.container():
-                st.write("---") # Replaced the green box with a simple separator
+                st.write("---") 
                 if date: st.caption(f"📅 Match {match_no} • {date}")
                 c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
                 with c1:
@@ -273,16 +272,42 @@ if page == "Knockout Predictions":
 
         st.subheader("1️⃣ Round of 32")
         api_r32 = sorted([m for m in raw_matches if m.get('stage') == "ROUND_OF_32"], key=lambda x: x.get('utcDate', ''))
-        for idx, f in enumerate(FIXED_R32_MATCHES):
-            tag = str(api_r32[idx].get('id')) if idx < len(api_r32) else f['id_tag']
-            h = CLEAN_TEAM_MAP.get(standardize_string(api_r32[idx].get('homeTeam', {}).get('name')), f['home']) if idx < len(api_r32) else f['home']
-            a = CLEAN_TEAM_MAP.get(standardize_string(api_r32[idx].get('awayTeam', {}).get('name')), f['away']) if idx < len(api_r32) else f['away']
-            draw_match_ui(tag, h, a, (idx < len(api_r32) and api_r32[idx].get('status') not in ["TIMED", "SCHEDULED"]), f['match_no'], f['date'], "ROUND_OF_32")
+        
+        # Smart mapping: Find matches based on known teams rather than array index
+        mapped_api_matches = {}
+        for f in FIXED_R32_MATCHES:
+            for m in api_r32:
+                api_h_raw = m.get('homeTeam', {}).get('name', '')
+                api_a_raw = m.get('awayTeam', {}).get('name', '')
+                if not api_h_raw or not api_a_raw: continue
+                
+                api_h = CLEAN_TEAM_MAP.get(standardize_string(api_h_raw), api_h_raw)
+                api_a = CLEAN_TEAM_MAP.get(standardize_string(api_a_raw), api_a_raw)
+                
+                # If a known team from the fixed list is found in this API match, map it
+                if (f['home'] != "TBD" and (f['home'] == api_h or f['home'] == api_a)) or \
+                   (f['away'] != "TBD" and (f['away'] == api_h or f['away'] == api_a)):
+                    mapped_api_matches[f['id_tag']] = {"api_match": m, "real_home": api_h, "real_away": api_a}
+                    break
+
+        for f in FIXED_R32_MATCHES:
+            tag = f['id_tag']
+            match_data = mapped_api_matches.get(tag)
+            
+            if match_data:
+                h = match_data['real_home']
+                a = match_data['real_away']
+                is_locked = match_data['api_match'].get('status') not in ["TIMED", "SCHEDULED", None]
+            else:
+                h = f['home']
+                a = f['away']
+                is_locked = False
+                
+            draw_match_ui(tag, h, a, is_locked, f['match_no'], f['date'], "ROUND_OF_32")
 
         for stage, label in [("ROUND_OF_16", "2️⃣ R16"), ("QUARTER_FINALS", "3️⃣ QF"), ("SEMI_FINALS", "4️⃣ SF"), ("FINAL", "5️⃣ Final")]:
             st.subheader(label)
             for m_id, src in BRACKET_MAPPING.get(stage, {}).items():
-                # Dynamically pulls the winners from the previous round
                 h_team = st.session_state.ko_winners.get(src[0], f"Winner {src[0]}")
                 a_team = st.session_state.ko_winners.get(src[1], f"Winner {src[1]}")
                 draw_match_ui(m_id, h_team, a_team, False, 0, None, stage)
@@ -307,42 +332,40 @@ elif page == "Leaderboard":
         st.error(f"❌ Could not load picks: {e}")
         st.stop()
 
+    # Replicate the smart mapping so the leaderboard knows how to score the R32 games
+    api_r32 = [m for m in live_matches if m.get('stage') == "ROUND_OF_32"]
+    tag_to_api_match = {}
+    for f in FIXED_R32_MATCHES:
+        for m in api_r32:
+            api_h_raw = m.get('homeTeam', {}).get('name', '')
+            api_a_raw = m.get('awayTeam', {}).get('name', '')
+            if not api_h_raw or not api_a_raw: continue
+            
+            api_h = CLEAN_TEAM_MAP.get(standardize_string(api_h_raw), api_h_raw)
+            api_a = CLEAN_TEAM_MAP.get(standardize_string(api_a_raw), api_a_raw)
+            
+            if (f['home'] != "TBD" and (f['home'] == api_h or f['home'] == api_a)) or \
+               (f['away'] != "TBD" and (f['away'] == api_h or f['away'] == api_a)):
+                tag_to_api_match[f['id_tag']] = m
+                break
+
     def calc_score(row):
         score = 0
         u_picks = all_picks[all_picks['Name'].astype(str).str.lower() == str(row['Name']).lower()]
         for _, p in u_picks.iterrows():
-            m = next((m for m in live_matches if str(m.get('id')) == str(p['Match_ID'])), None)
+            m = tag_to_api_match.get(str(p['Match_ID']))
+            
             if m and m.get('status') in ['FINISHED', 'AWARDED']:
                 ft = m.get('score', {}).get('fullTime', {})
                 
-                # Point for exact home score
                 if ft and ft.get('home') is not None and str(p['Home_Score']) == str(ft.get('home')): 
                     score += 1
-                    
-                # Point for exact away score
                 if ft and ft.get('away') is not None and str(p['Away_Score']) == str(ft.get('away')): 
                     score += 1
 
-                # Point for correct winner (Handles penalty shootout scenarios via API 'winner' flag)
                 api_winner = m.get('score', {}).get('winner')
                 home_team = CLEAN_TEAM_MAP.get(standardize_string(m.get('homeTeam', {}).get('name')), str(m.get('homeTeam', {}).get('name')))
                 away_team = CLEAN_TEAM_MAP.get(standardize_string(m.get('awayTeam', {}).get('name')), str(m.get('awayTeam', {}).get('name')))
                 
                 actual_advancing = None
-                if api_winner == 'HOME_TEAM': actual_advancing = home_team
-                elif api_winner == 'AWAY_TEAM': actual_advancing = away_team
-
-                if actual_advancing and standardize_string(str(p['Winner'])) == standardize_string(actual_advancing): 
-                    score += 1
-        return score
-
-    try:
-        df = pd.DataFrame(connect_to_sheet("sheet1").get_all_records())
-        df['Points'] = df.apply(calc_score, axis=1)
-        st.table(df[['Name', 'Points']].sort_values(by='Points', ascending=False))
-    except Exception as e:
-        st.error(f"❌ Could not load leaderboard: {e}")
-
-elif page == "Rules & Chat Forum":
-    st.title("📜 Pool Rules")
-    st.write("**Formula:** 1 pt/correct winner, 1 pt/exact home score, 1 pt/exact away score. (Max 3 points per match)")
+                if api_winner == 'HOME_TEAM': actual
