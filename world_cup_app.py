@@ -65,6 +65,7 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
+    # Source: confirmed June 27 2026 - only add when the SLOT is locked, not just the team
     # Both teams confirmed:
     "M73": ("South Africa",  "Canada"),
     "M74": ("Germany",       "Paraguay"),
@@ -72,16 +73,14 @@ R32_FALLBACK = {
     "M76": ("Brazil",        "Japan"),
     "M77": ("France",        "Sweden"),
     "M78": ("Ivory Coast",   "Norway"),
-    "M79": ("Mexico",        "Scotland"),
-    "M80": ("England",       "Senegal"),
     "M81": ("USA",           "Bosnia"),
-    "M82": ("Belgium",       "Ecuador"),
     "M83": ("Australia",     "Egypt"),
-    "M84": ("Spain",         "Austria"),
-    "M85": ("Switzerland",   "Colombia"),
     "M86": ("Argentina",     "Cape Verde"),
-    "M87": ("Portugal",      "Croatia"),
-    "M88": ("Ghana",         "South Korea"),
+    # One team confirmed in this specific slot, other TBD:
+    "M79": ("Mexico",        "TBD"),   # Mexico won Group A, will play a best 3rd place team
+    "M82": ("Belgium",       "TBD"),   # Belgium won Group G, will play a best 3rd place team
+    "M84": ("Spain",         "TBD"),   # Spain won Group H, will play Group J runner-up (Austria or Algeria)
+    # Everything else TBD - slot not yet determined
 }
 
 R32_SLOTS = [
