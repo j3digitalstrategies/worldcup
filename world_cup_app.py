@@ -525,11 +525,13 @@ elif page == "Leaderboard":
                 match_info = tag_to_match.get(m_tag)
                 if not match_info or match_info.get('status') not in ['FINISHED','AWARDED']:
                     continue
-                ft = match_info.get('score',{}).get('fullTime',{})
-                if ft:
-                    if ft.get('home') is not None and str(pick.get('Home_Score','')) == str(ft['home']):
+                ft = match_info.get('score', {})
+                # Use extraTime score if available (accounts for 120 min), else fullTime (90 min)
+                final = ft.get('extraTime') or ft.get('fullTime', {})
+                if final:
+                    if final.get('home') is not None and str(pick.get('Home_Score', '')) == str(final['home']):
                         total += 1
-                    if ft.get('away') is not None and str(pick.get('Away_Score','')) == str(ft['away']):
+                    if final.get('away') is not None and str(pick.get('Away_Score', '')) == str(final['away']):
                         total += 1
                 api_winner = match_info.get('winner')
                 if api_winner:
@@ -631,7 +633,7 @@ if page == "Knockout Predictions":
                     if h_score == a_score:
                         opts = [home, away]
                         idx = opts.index(default_w) if default_w in opts else 0
-                        chosen_winner = st.selectbox("Advances via PKs:", opts, index=idx,
+                        chosen_winner = st.selectbox("Advances via Penalty Kicks:", opts, index=idx,
                                                      key=f"pk_w_{tag}", disabled=is_locked)
                     else:
                         chosen_winner = home if h_score > a_score else away
@@ -733,7 +735,7 @@ elif page == "Rules & Chat Forum":
 | Correct winner / team that advances | 1 pt |
 """)
         st.write("**Maximum 3 points per match** × 31 knockout matches = **93 points total.**")
-        st.info("💡 If a match goes to extra time or penalties, the score you predict is the score after 90 minutes. The winner pick is whoever actually advances (regardless of how).")
+        st.info("💡 If a match goes to extra time or penalties, the score you predict is the score after up to 120 minutes (including extra time). The winner pick is whoever actually advances (regardless of whether it goes to penalty kicks).")
 
     with st.expander("🏁 Tie-Breaker", expanded=True):
         st.markdown("### How the Tie-Breaker Works")
