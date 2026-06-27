@@ -106,11 +106,7 @@ st.set_page_config(page_title="2026 WC Portal", layout="wide")
 with st.sidebar:
     st.header("Player Login")
     registered_players = get_registered_players()
-    user_type = st.selectbox("User Mode", ["General User", "Parent/Teacher"])
     
-    if user_type == "Parent/Teacher":
-        age = st.number_input("Enter kid's age:", min_value=1, max_value=18, value=10)
-        
     if registered_players:
         selected_dropdown_name = st.selectbox("Identify Profile Name:", ["-- Select Profile --"] + registered_players)
         user_name = selected_dropdown_name if selected_dropdown_name != "-- Select Profile --" else ""
