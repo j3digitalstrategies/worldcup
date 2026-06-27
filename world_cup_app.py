@@ -65,22 +65,24 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # Source: confirmed June 27 2026 - only add when the SLOT is locked, not just the team
-    # Both teams confirmed:
+    # Source: Google World Cup bracket - exact confirmed fixtures Jun 27 2026
+    # API takes priority for scores/status. Fallback only fills NULL team names.
     "M73": ("South Africa",  "Canada"),
     "M74": ("Germany",       "Paraguay"),
     "M75": ("Netherlands",   "Morocco"),
     "M76": ("Brazil",        "Japan"),
     "M77": ("France",        "Sweden"),
     "M78": ("Ivory Coast",   "Norway"),
+    "M79": ("Mexico",        "TBD"),
+    "M80": ("TBD",           "TBD"),
     "M81": ("USA",           "Bosnia"),
+    "M82": ("Belgium",       "TBD"),
     "M83": ("Australia",     "Egypt"),
+    "M84": ("Spain",         "TBD"),
+    "M85": ("Switzerland",   "TBD"),
     "M86": ("Argentina",     "Cape Verde"),
-    # One team confirmed in this specific slot, other TBD:
-    "M79": ("Mexico",        "TBD"),   # Mexico won Group A, will play a best 3rd place team
-    "M82": ("Belgium",       "TBD"),   # Belgium won Group G, will play a best 3rd place team
-    "M84": ("Spain",         "TBD"),   # Spain won Group H, will play Group J runner-up (Austria or Algeria)
-    # Everything else TBD - slot not yet determined
+    "M87": ("TBD",           "TBD"),
+    "M88": ("TBD",           "TBD"),
 }
 
 R32_SLOTS = [
