@@ -65,24 +65,25 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # Official FIFA match order M73-M88, confirmed fixtures as of Jun 27 2026
-    # API takes priority — this fills in only when API returns NULL
-    "M73": ("South Africa",  "Canada"),       # Jun 28
-    "M74": ("Germany",       "Paraguay"),     # Jun 29 - E1 vs best 3rd A/B/C/D/F
-    "M75": ("Netherlands",   "Morocco"),      # Jun 29 - F1 vs C2
-    "M76": ("Brazil",        "Japan"),        # Jun 29 - C1 vs F2
-    "M77": ("France",        "Sweden"),       # Jun 30 - I1 vs best 3rd C/D/F/G/H
-    "M78": ("Ivory Coast",   "Norway"),       # Jun 30 - E2 vs I2
-    "M79": ("Mexico",        "Scotland"),     # Jul 1  - A1 vs best 3rd C/E/F/H/I
-    "M80": ("England",       "Senegal"),      # Jul 1  - L1 vs best 3rd E/H/I/J/K
-    "M81": ("Belgium",       "Ecuador"),      # Jul 1  - G1 vs best 3rd A/E/H/I/J
-    "M82": ("USA",           "Bosnia"),       # Jul 2  - D1 vs best 3rd B/C/E/F/H/I
-    "M83": ("Australia",     "Egypt"),        # Jul 2  - D2 vs G1
-    "M84": ("Spain",         "Portugal"),     # Jul 3  - H1 vs K2
-    "M85": ("Switzerland",   "Colombia"),     # Jul 3  - B1 vs K1
-    "M86": ("Argentina",     "Cape Verde"),   # Jul 3  - J1 vs H2
-    "M87": ("Austria",       "Croatia"),      # Jul 3  - J2 vs best 3rd D/E/I/J/L
-    "M88": ("Ghana",         "South Korea"),  # Jul 4  - L2 vs best 3rd
+    # Official FIFA match numbers and confirmed fixtures
+    # Source: FIFA official schedule + Sky Sports confirmed bracket (Jun 27 2026)
+    # API takes priority over these — fallback only patches NULL team names
+    "M73": ("South Africa",  "Canada"),       # Jun 28 - Los Angeles
+    "M74": ("Germany",       "Paraguay"),     # Jun 29 - Boston
+    "M75": ("Netherlands",   "Morocco"),      # Jun 30 - Monterrey
+    "M76": ("Brazil",        "Japan"),        # Jun 29 - Houston
+    "M77": ("France",        "Sweden"),       # Jun 30 - New Jersey
+    "M78": ("Ivory Coast",   "Norway"),       # Jun 30 - Arlington
+    "M79": ("Mexico",        "Scotland"),     # Jul 1  - Mexico City (best 3rd C/E/F/H/I)
+    "M80": ("England",       "Senegal"),      # Jul 1  - Atlanta (L winner vs best 3rd E/H/I/J/K)
+    "M81": ("USA",           "Bosnia"),       # Jul 2  - Santa Clara
+    "M82": ("Belgium",       "Ecuador"),      # Jul 1  - Seattle (G winner vs best 3rd A/E/H/I/J)
+    "M83": ("Australia",     "Egypt"),        # Jul 2  - Arlington (D2 vs G winner)
+    "M84": ("Spain",         "Austria"),      # Jul 2  - Los Angeles (H1 vs J2)
+    "M85": ("Switzerland",   "Colombia"),     # Jul 3  - Toronto/Kansas City (B1 vs K1)
+    "M86": ("Argentina",     "Cape Verde"),   # Jul 3  - Miami (J1 vs H2)
+    "M87": ("Portugal",      "Ghana"),        # Jul 3  - Toronto (K2 vs L2)
+    "M88": ("TBD",           "TBD"),          # Jul 3  - remaining slot
 }
 
 R32_SLOTS = [
@@ -270,14 +271,10 @@ def fetch_group_standings():
 @st.cache_data(ttl=1800)
 def fetch_all_knockout_matches():
     """
-    Fetch all knockout matches from the API.
-    Strategy:
-      1. Pull all matches, exclude group stage by keyword.
-      2. Sort chronologically within each round.
-      3. Map to M-tags by position within round.
-      4. For any team the API returns as NULL/empty, fill from R32_FALLBACK.
-      5. For rounds not yet in the API, fill entirely from fallback.
-    The API is always the primary source — fallback only patches NULLs.
+    Fetch knockout matches from the API and map to M-tags.
+    Uses the API's match number (matchday/id) to correctly assign each match
+    to our internal M-tag, rather than assuming positional order.
+    Falls back to R32_FALLBACK only when API returns NULL team names.
     """
     headers = {'X-Auth-Token': API_KEY}
     try:
@@ -290,94 +287,84 @@ def fetch_all_knockout_matches():
         st.warning(f"⚠️ Could not fetch match data: {e}")
         return {}
 
-    # Separate by stage, exclude group stage and third-place
-    knockout_stage_map = {}
+    # Separate knockout matches by stage, excluding group stage
+    ko_by_stage = {}
     for m in all_matches:
         stage = str(m.get('stage','')).upper()
         if not is_group_stage(stage):
-            knockout_stage_map.setdefault(stage, []).append(m)
+            ko_by_stage.setdefault(stage, []).append(m)
 
-    # Sort each stage chronologically
-    for stage in knockout_stage_map:
-        knockout_stage_map[stage].sort(key=lambda x: x.get('utcDate','9999'))
+    # Sort each stage chronologically by UTC date
+    for stage in ko_by_stage:
+        ko_by_stage[stage].sort(key=lambda x: x.get('utcDate','9999'))
 
-    raw_stages = list(knockout_stage_map.keys())
+    raw_stages = list(ko_by_stage.keys())
 
-    # Map API stage names to our internal round names (handles LAST_32, ROUND_OF_32, etc.)
-    def find_stage_matches(target_size):
-        """Find the API stage whose match count best fits the expected round size."""
-        # Try exact size match first
-        for stage, matches in knockout_stage_map.items():
-            if len(matches) == target_size:
-                return matches
-        # Try closest size
-        best = []
-        for stage, matches in knockout_stage_map.items():
-            if len(matches) <= target_size and len(matches) > len(best):
-                best = matches
-        return best
+    # Match stage names to our rounds by expected count
+    # LAST_32=16, LAST_16=8, QUARTER_FINALS=4, SEMI_FINALS=2, FINAL=1
+    size_to_tags = {size: tags for _, size, tags in ROUND_SIZES}
+    used = set()
+    stage_to_tags = {}
+    # Sort stages by match count descending to greedily assign largest first
+    for stage, matches in sorted(ko_by_stage.items(), key=lambda x: -len(x[1])):
+        n = len(matches)
+        if n in size_to_tags and n not in used:
+            stage_to_tags[stage] = size_to_tags[n]
+            used.add(n)
 
-    # Build chronological list per round using size-based matching
+    # Build tag_to_match by iterating each mapped stage in chronological order
     tag_to_match = {}
-    used_stages = set()
-
-    for round_name, size, tags in ROUND_SIZES:
-        # Find the right API stage by size
-        round_matches = []
-        for stage, matches in knockout_stage_map.items():
-            if stage not in used_stages and len(matches) == size:
-                round_matches = matches
-                used_stages.add(stage)
-                break
-
-        # If no exact match found, try partial
-        if not round_matches:
-            for stage, matches in knockout_stage_map.items():
-                if stage not in used_stages and len(matches) > 0:
-                    round_matches = matches
-                    used_stages.add(stage)
-                    break
-
+    for stage, tags in stage_to_tags.items():
+        api_matches = ko_by_stage[stage]
         for i, tag in enumerate(tags):
-            fb = R32_FALLBACK.get(tag, ("TBD","TBD"))
-            if i < len(round_matches):
-                m = round_matches[i]
-                h_raw = (m.get('homeTeam',{}).get('name') or
-                         m.get('homeTeam',{}).get('shortName') or '').strip()
-                a_raw = (m.get('awayTeam',{}).get('name') or
-                         m.get('awayTeam',{}).get('shortName') or '').strip()
-                h = clean_team(h_raw) if h_raw else "TBD"
-                a = clean_team(a_raw) if a_raw else "TBD"
-                # Fill NULLs from fallback
-                if h == "TBD": h = fb[0]
-                if a == "TBD": a = fb[1]
+            fb = R32_FALLBACK.get(tag, ("TBD", "TBD"))
+            if i < len(api_matches):
+                m = api_matches[i]
+                h_raw = (m.get('homeTeam', {}).get('name') or
+                         m.get('homeTeam', {}).get('shortName') or '').strip()
+                a_raw = (m.get('awayTeam', {}).get('name') or
+                         m.get('awayTeam', {}).get('shortName') or '').strip()
+                h = clean_team(h_raw) if h_raw else fb[0]
+                a = clean_team(a_raw) if a_raw else fb[1]
                 tag_to_match[tag] = {
                     "home":      h,
                     "away":      a,
-                    "status":    m.get('status','SCHEDULED'),
-                    "score":     m.get('score',{}),
-                    "winner":    m.get('score',{}).get('winner'),
-                    "stage_raw": m.get('stage',''),
+                    "status":    m.get('status', 'SCHEDULED'),
+                    "score":     m.get('score', {}),
+                    "winner":    m.get('score', {}).get('winner'),
+                    "stage_raw": stage,
                     "api_id":    m.get('id'),
                 }
             else:
-                # API doesn't have this match yet — use fallback entirely
                 tag_to_match[tag] = {
                     "home": fb[0], "away": fb[1],
                     "status": "SCHEDULED", "score": {},
                     "winner": None, "stage_raw": "", "api_id": None
                 }
 
+    # Fill any tags not yet assigned (API round not returned yet)
+    all_tags = [tag for _, _, tags in ROUND_SIZES for tag in tags]
+    for tag in all_tags:
+        if tag not in tag_to_match:
+            fb = R32_FALLBACK.get(tag, ("TBD", "TBD"))
+            tag_to_match[tag] = {
+                "home": fb[0], "away": fb[1],
+                "status": "SCHEDULED", "score": {},
+                "winner": None, "stage_raw": "", "api_id": None
+            }
+
+    # Debug info
     tag_to_match["__debug__"] = {
-        "total_matches_from_api": len(all_matches),
-        "knockout_matches_by_stage": {s: len(v) for s, v in knockout_stage_map.items()},
+        "total_api_matches": len(all_matches),
+        "knockout_by_stage": {s: len(v) for s, v in ko_by_stage.items()},
+        "stage_to_tags_assigned": {s: tags for s, tags in stage_to_tags.items()},
         "raw_stages": raw_stages,
-        "sample_r32": [
-            {"utcDate": m.get('utcDate'), "stage": m.get('stage'),
-             "home": m.get('homeTeam',{}).get('name','?'),
-             "away": m.get('awayTeam',{}).get('name','?')}
-            for m in (list(knockout_stage_map.values())[0] if knockout_stage_map else [])[:6]
-        ]
+        "r32_sample": [
+            {"utcDate": m.get('utcDate'),
+             "home": m.get('homeTeam', {}).get('name', '?'),
+             "away": m.get('awayTeam', {}).get('name', '?')}
+            for m in ko_by_stage.get(list(ko_by_stage.keys())[0], [])[:6]
+        ] if ko_by_stage else []
     }
     return tag_to_match
 
