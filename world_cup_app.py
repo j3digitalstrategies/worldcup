@@ -325,10 +325,22 @@ page = st.sidebar.radio("Navigation Menu", [
 ])
 registered_players = get_registered_players()
 
+# Keep last known good player list in session state
+# so a transient API failure doesn't wipe the login mid-session
+if registered_players:
+    st.session_state["player_list_cache"] = registered_players
+elif "player_list_cache" in st.session_state:
+    registered_players = st.session_state["player_list_cache"]
+
 with st.sidebar:
     st.header("Player Login")
     if registered_players:
-        selected = st.selectbox("Identify Profile Name:", ["-- Select Profile --"] + registered_players)
+        # Preserve selected name across reruns
+        prev = st.session_state.get("selected_player", "-- Select Profile --")
+        opts = ["-- Select Profile --"] + registered_players
+        default_idx = opts.index(prev) if prev in opts else 0
+        selected = st.selectbox("Identify Profile Name:", opts, index=default_idx)
+        st.session_state["selected_player"] = selected
         user_name = selected if selected != "-- Select Profile --" else ""
     else:
         st.warning("⚠️ Could not load player list. Try Sync below.")
