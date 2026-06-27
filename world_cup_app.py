@@ -270,162 +270,112 @@ def fetch_group_standings():
 @st.cache_data(ttl=300)
 def fetch_all_knockout_matches():
     """
-    Fetch knockout matches from the API and map to M-tags.
-    Uses the API's match number (matchday/id) to correctly assign each match
-    to our internal M-tag, rather than assuming positional order.
-    Falls back to R32_FALLBACK only when API returns NULL team names.
+    R32 fixtures come from R32_FALLBACK (source of truth for teams).
+    API is used ONLY to get match status and scores for R32, matched by team name.
+    Later rounds (R16+) come from API by position once teams are known.
+    This way wrong API team assignments can never corrupt our fixture display.
     """
     headers = {'X-Auth-Token': API_KEY}
     try:
         response = requests.get(f"{MATCHES_URL}?season=2026", headers=headers, timeout=12)
         if response.status_code != 200:
-            st.warning(f"⚠️ API returned HTTP {response.status_code}")
-            return {}
-        all_matches = response.json().get('matches', [])
-    except Exception as e:
-        st.warning(f"⚠️ Could not fetch match data: {e}")
-        return {}
+            all_matches = []
+        else:
+            all_matches = response.json().get('matches', [])
+    except Exception:
+        all_matches = []
 
-    # Separate knockout matches by stage, excluding group stage
+    # Index all API knockout matches by team name for score/status lookup
+    api_by_team = {}
     ko_by_stage = {}
     for m in all_matches:
-        stage = str(m.get('stage','')).upper()
-        if not is_group_stage(stage):
-            ko_by_stage.setdefault(stage, []).append(m)
+        stage = str(m.get('stage', '')).upper()
+        if is_group_stage(stage):
+            continue
+        ko_by_stage.setdefault(stage, []).append(m)
+        for side in ['homeTeam', 'awayTeam']:
+            raw = (m.get(side, {}).get('name') or m.get(side, {}).get('shortName') or '').strip()
+            if raw:
+                api_by_team[clean_team(raw)] = m
 
-    # Sort each stage chronologically by UTC date
     for stage in ko_by_stage:
-        ko_by_stage[stage].sort(key=lambda x: x.get('utcDate','9999'))
-
-    raw_stages = list(ko_by_stage.keys())
-
-    # Match stage names to our rounds by expected count
-    # LAST_32=16, LAST_16=8, QUARTER_FINALS=4, SEMI_FINALS=2, FINAL=1
-    size_to_tags = {size: tags for _, size, tags in ROUND_SIZES}
-    used = set()
-    stage_to_tags = {}
-    # Sort stages by match count descending to greedily assign largest first
-    for stage, matches in sorted(ko_by_stage.items(), key=lambda x: -len(x[1])):
-        n = len(matches)
-        if n in size_to_tags and n not in used:
-            stage_to_tags[stage] = size_to_tags[n]
-            used.add(n)
-
-    # Strategy: match API matches to M-tags by team name using R32_FALLBACK as the key.
-    # For confirmed slots: find the API match whose teams match the fallback, use API data.
-    # For unconfirmed slots: show TBD — never guess.
-    # This avoids positional errors entirely.
-
-    # Index all R32 API matches by every known team name
-    r32_stage = None
-    for stage, tags in stage_to_tags.items():
-        if len(tags) == 16:
-            r32_stage = stage
-            break
-
-    api_r32 = ko_by_stage.get(r32_stage, []) if r32_stage else []
-    api_by_team = {}
-    for m in api_r32:
-        h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
-        a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
-        if h_raw: api_by_team[clean_team(h_raw)] = m
-        if a_raw: api_by_team[clean_team(a_raw)] = m
+        ko_by_stage[stage].sort(key=lambda x: x.get('utcDate', '9999'))
 
     tag_to_match = {}
-    assigned_ids = set()
 
-    # Process R32 slots
+    # ── R32: teams come from R32_FALLBACK, status/score from API by team lookup ──
     r32_tags = [tag for _, size, tags in ROUND_SIZES if size == 16 for tag in tags]
+    assigned_ids = set()
     for tag in r32_tags:
-        if tag in R32_FALLBACK:
-            fb_home, fb_away = R32_FALLBACK[tag]
-            # Find API match by looking up the confirmed team names
-            matched_m = None
-            for name in [fb_home, fb_away]:
-                if name != "TBD" and name in api_by_team:
-                    candidate = api_by_team[name]
-                    if candidate.get('id') not in assigned_ids:
-                        matched_m = candidate
-                        break
-            if matched_m:
-                assigned_ids.add(matched_m.get('id'))
-                h_raw = (matched_m.get('homeTeam', {}).get('name') or matched_m.get('homeTeam', {}).get('shortName') or '').strip()
-                a_raw = (matched_m.get('awayTeam', {}).get('name') or matched_m.get('awayTeam', {}).get('shortName') or '').strip()
-                h = clean_team(h_raw) if h_raw else fb_home
-                a = clean_team(a_raw) if a_raw else fb_away
-                tag_to_match[tag] = {
-                    "home": h, "away": a,
-                    "status": matched_m.get('status', 'SCHEDULED'),
-                    "score": matched_m.get('score', {}),
-                    "winner": matched_m.get('score', {}).get('winner'),
-                    "stage_raw": r32_stage or '',
-                    "api_id": matched_m.get('id'),
-                }
-            else:
-                # Confirmed fixture but API hasn't populated it yet
-                tag_to_match[tag] = {
-                    "home": fb_home, "away": fb_away,
-                    "status": "SCHEDULED", "score": {},
-                    "winner": None, "stage_raw": "", "api_id": None
-                }
-        else:
-            # Not in fallback = not confirmed = TBD
-            tag_to_match[tag] = {
-                "home": "TBD", "away": "TBD",
-                "status": "SCHEDULED", "score": {},
-                "winner": None, "stage_raw": "", "api_id": None
-            }
+        fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
+        # Find API match by looking up a known team from fallback
+        matched_m = None
+        for name in [fb_home, fb_away]:
+            if name != "TBD" and name in api_by_team:
+                candidate = api_by_team[name]
+                if candidate.get('id') not in assigned_ids:
+                    matched_m = candidate
+                    assigned_ids.add(candidate.get('id'))
+                    break
+        tag_to_match[tag] = {
+            "home":      fb_home,
+            "away":      fb_away,
+            "status":    matched_m.get('status', 'SCHEDULED') if matched_m else 'SCHEDULED',
+            "score":     matched_m.get('score', {}) if matched_m else {},
+            "winner":    matched_m.get('score', {}).get('winner') if matched_m else None,
+            "stage_raw": matched_m.get('stage', '') if matched_m else '',
+            "api_id":    matched_m.get('id') if matched_m else None,
+        }
 
-    # Process later rounds (R16, QF, SF, Final) purely from API by position
-    for stage, tags in stage_to_tags.items():
-        if len(tags) == 16:
-            continue  # already handled R32 above
-        api_matches = ko_by_stage.get(stage, [])
+    # ── Later rounds: purely from API by position ──────────────────────────────
+    size_to_tags = {size: tags for _, size, tags in ROUND_SIZES if size < 16}
+    used_stages = set()
+    for _, size, tags in ROUND_SIZES:
+        if size >= 16:
+            continue
+        # Find API stage with matching count
+        api_matches = []
+        for stage, matches in sorted(ko_by_stage.items(), key=lambda x: -len(x[1])):
+            if stage not in used_stages and len(matches) == size:
+                api_matches = matches
+                used_stages.add(stage)
+                break
         for i, tag in enumerate(tags):
             if i < len(api_matches):
                 m = api_matches[i]
                 h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
                 a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
                 tag_to_match[tag] = {
-                    "home": clean_team(h_raw) if h_raw else "TBD",
-                    "away": clean_team(a_raw) if a_raw else "TBD",
+                    "home":   clean_team(h_raw) if h_raw else "TBD",
+                    "away":   clean_team(a_raw) if a_raw else "TBD",
                     "status": m.get('status', 'SCHEDULED'),
-                    "score": m.get('score', {}),
+                    "score":  m.get('score', {}),
                     "winner": m.get('score', {}).get('winner'),
-                    "stage_raw": stage,
+                    "stage_raw": m.get('stage', ''),
                     "api_id": m.get('id'),
                 }
             else:
                 tag_to_match[tag] = {
-                    "home": "TBD", "away": "TBD",
-                    "status": "SCHEDULED", "score": {},
-                    "winner": None, "stage_raw": "", "api_id": None
+                    "home": "TBD", "away": "TBD", "status": "SCHEDULED",
+                    "score": {}, "winner": None, "stage_raw": "", "api_id": None
                 }
 
-    # Fill any remaining tags
-    all_tags = [tag for _, _, tags in ROUND_SIZES for tag in tags]
-    for tag in all_tags:
-        if tag not in tag_to_match:
-            tag_to_match[tag] = {
-                "home": "TBD", "away": "TBD",
-                "status": "SCHEDULED", "score": {},
-                "winner": None, "stage_raw": "", "api_id": None
-            }
+    # Fill any gaps
+    for _, _, tags in ROUND_SIZES:
+        for tag in tags:
+            if tag not in tag_to_match:
+                tag_to_match[tag] = {
+                    "home": "TBD", "away": "TBD", "status": "SCHEDULED",
+                    "score": {}, "winner": None, "stage_raw": "", "api_id": None
+                }
 
-    # Debug info
     tag_to_match["__debug__"] = {
         "total_api_matches": len(all_matches),
         "knockout_by_stage": {s: len(v) for s, v in ko_by_stage.items()},
-        "stage_to_tags_assigned": {s: tags for s, tags in stage_to_tags.items()},
-        "raw_stages": raw_stages,
-        "r32_sample": [
-            {"utcDate": m.get('utcDate'),
-             "home": m.get('homeTeam', {}).get('name', '?'),
-             "away": m.get('awayTeam', {}).get('name', '?')}
-            for m in ko_by_stage.get(list(ko_by_stage.keys())[0], [])[:6]
-        ] if ko_by_stage else []
+        "api_teams_found": list(api_by_team.keys())[:20],
     }
     return tag_to_match
+
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 
@@ -604,9 +554,12 @@ if page == "Leaderboard":
 
         with st.expander("🛠️ Diagnostics"):
             debug = tag_to_match.get("__debug__", {})
-            st.write(f"Total knockout matches from API: `{debug.get('total_ko_matches','?')}`")
-            st.write(f"Stage names: `{debug.get('raw_stages',[])}`")
-            st.json(debug.get("sample", []))
+            st.write(f"Total API matches: `{debug.get('total_api_matches','?')}`")
+            st.write(f"Stage names: `{debug.get('knockout_by_stage',{})}`")
+            st.write(f"API teams found: `{debug.get('api_teams_found',[])}`")
+            st.write("**R32 tag mapping:**")
+            r32 = {k: {"home": v["home"], "away": v["away"], "status": v["status"]} for k, v in tag_to_match.items() if k.startswith("M") and k not in ["M89","M90","M91","M92","M93","M94","M95","M96","M97","M98","M99","M100","M101","M102","M104"]}
+            st.json(r32)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: KNOCKOUT PREDICTIONS
@@ -730,9 +683,9 @@ elif page == "Knockout Predictions":
 
         with st.expander("🛠️ API Debug"):
             debug = tag_to_match.get("__debug__", {})
-            st.write(f"Total knockout matches: `{debug.get('total_ko_matches','?')}`")
-            st.write(f"Stage names: `{debug.get('raw_stages',[])}`")
-            st.json(debug.get("sample", []))
+            st.write(f"Total API matches: `{debug.get('total_api_matches','?')}`")
+            st.write(f"Stages: `{debug.get('knockout_by_stage',{})}`")
+            st.write(f"API teams found: `{debug.get('api_teams_found',[])}`")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: GROUP PREDICTIONS (CLOSED)
