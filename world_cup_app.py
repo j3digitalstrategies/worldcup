@@ -64,27 +64,7 @@ CLEAN_TEAM_MAP = {
     "england": "England", "croatia": "Croatia", "ghana": "Ghana", "panama": "Panama"
 }
 
-R32_FALLBACK = {
-    # Official FIFA match numbers and confirmed fixtures
-    # Source: FIFA official schedule + Sky Sports confirmed bracket (Jun 27 2026)
-    # API takes priority over these — fallback only patches NULL team names
-    "M73": ("South Africa",  "Canada"),       # Jun 28 - Los Angeles
-    "M74": ("Germany",       "Paraguay"),     # Jun 29 - Boston
-    "M75": ("Netherlands",   "Morocco"),      # Jun 30 - Monterrey
-    "M76": ("Brazil",        "Japan"),        # Jun 29 - Houston
-    "M77": ("France",        "Sweden"),       # Jun 30 - New Jersey
-    "M78": ("Ivory Coast",   "Norway"),       # Jun 30 - Arlington
-    "M79": ("Mexico",        "Scotland"),     # Jul 1  - Mexico City (best 3rd C/E/F/H/I)
-    "M80": ("England",       "Senegal"),      # Jul 1  - Atlanta (L winner vs best 3rd E/H/I/J/K)
-    "M81": ("USA",           "Bosnia"),       # Jul 2  - Santa Clara
-    "M82": ("Belgium",       "Ecuador"),      # Jul 1  - Seattle (G winner vs best 3rd A/E/H/I/J)
-    "M83": ("Australia",     "Egypt"),        # Jul 2  - Arlington (D2 vs G winner)
-    "M84": ("Spain",         "Austria"),      # Jul 2  - Los Angeles (H1 vs J2)
-    "M85": ("Switzerland",   "Colombia"),     # Jul 3  - Toronto/Kansas City (B1 vs K1)
-    "M86": ("Argentina",     "Cape Verde"),   # Jul 3  - Miami (J1 vs H2)
-    "M87": ("Portugal",      "Ghana"),        # Jul 3  - Toronto (K2 vs L2)
-    "M88": ("TBD",           "TBD"),          # Jul 3  - remaining slot
-}
+R32_FALLBACK = {}  # No fallback guessing — only show teams the API has confirmed
 
 R32_SLOTS = [
     {"match_no": 1,  "date": "Sun, 28 Jun, 3:00 PM ET",  "id_tag": "M73"},
@@ -268,7 +248,7 @@ def fetch_group_standings():
                 updated_map[clean_group_key] = ordered_teams[:4]
     return updated_map
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=300)
 def fetch_all_knockout_matches():
     """
     Fetch knockout matches from the API and map to M-tags.
@@ -324,8 +304,8 @@ def fetch_all_knockout_matches():
                          m.get('homeTeam', {}).get('shortName') or '').strip()
                 a_raw = (m.get('awayTeam', {}).get('name') or
                          m.get('awayTeam', {}).get('shortName') or '').strip()
-                h = clean_team(h_raw) if h_raw else fb[0]
-                a = clean_team(a_raw) if a_raw else fb[1]
+                h = clean_team(h_raw) if h_raw else "TBD"
+                a = clean_team(a_raw) if a_raw else "TBD"
                 tag_to_match[tag] = {
                     "home":      h,
                     "away":      a,
@@ -337,7 +317,7 @@ def fetch_all_knockout_matches():
                 }
             else:
                 tag_to_match[tag] = {
-                    "home": fb[0], "away": fb[1],
+                    "home": "TBD", "away": "TBD",
                     "status": "SCHEDULED", "score": {},
                     "winner": None, "stage_raw": "", "api_id": None
                 }
@@ -348,7 +328,7 @@ def fetch_all_knockout_matches():
         if tag not in tag_to_match:
             fb = R32_FALLBACK.get(tag, ("TBD", "TBD"))
             tag_to_match[tag] = {
-                "home": fb[0], "away": fb[1],
+                "home": "TBD", "away": "TBD",
                 "status": "SCHEDULED", "score": {},
                 "winner": None, "stage_raw": "", "api_id": None
             }
