@@ -13,36 +13,7 @@ BASE_URL = "https://api.football-data.org/v4/competitions/WC/standings"
 MATCHES_URL = "https://api.football-data.org/v4/competitions/WC/matches"
 SHEET_KEY = "1n8UR-kAVKeIuTTfl6AQPYeLlOy_iEruvdRSfYykIO8E"
 
-groups = {
-    "Group A": ["Mexico", "South Africa", "South Korea", "Czechia"],
-    "Group B": ["Canada", "Switzerland", "Qatar", "Bosnia"],
-    "Group C": ["Brazil", "Morocco", "Haiti", "Scotland"],
-    "Group D": ["USA", "Paraguay", "Australia", "Türkiye"],
-    "Group E": ["Germany", "Curaçao", "Ivory Coast", "Ecuador"],
-    "Group F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
-    "Group G": ["Belgium", "Egypt", "Iran", "New Zealand"],
-    "Group H": ["Spain", "Cape Verde", "Saudi Arabia", "Uruguay"],
-    "Group I": ["France", "Senegal", "Norway", "Iraq"],
-    "Group J": ["Argentina", "Algeria", "Austria", "Jordan"],
-    "Group K": ["Portugal", "Uzbekistan", "Colombia", "DR Congo"],
-    "Group L": ["England", "Croatia", "Ghana", "Panama"]
-}
-
-INITIAL_SEED_STANDINGS = {
-    "Group A": ["Mexico", "South Korea", "Czechia", "South Africa"],
-    "Group B": ["Switzerland", "Canada", "Qatar", "Bosnia"],
-    "Group C": ["Scotland", "Morocco", "Brazil", "Haiti"],
-    "Group D": ["USA", "Australia", "Türkiye", "Paraguay"],
-    "Group E": ["Germany", "Ivory Coast", "Ecuador", "Curaçao"],
-    "Group F": ["Sweden", "Japan", "Netherlands", "Tunisia"],
-    "Group G": ["New Zealand", "Iran", "Belgium", "Egypt"],
-    "Group H": ["Uruguay", "Saudi Arabia", "Spain", "Cape Verde"],
-    "Group I": ["Norway", "France", "Senegal", "Iraq"],
-    "Group J": ["Argentina", "Austria", "Jordan", "Algeria"],
-    "Group K": ["DR Congo", "Portugal", "Colombia", "Uzbekistan"],
-    "Group L": ["England", "Ghana", "Panama", "Croatia"]
-}
-
+# Helper for Team Normalization
 CLEAN_TEAM_MAP = {
     "mexico": "Mexico", "southafrica": "South Africa", "southkorea": "South Korea",
     "korearepublic": "South Korea", "republicofkorea": "South Korea", "czechia": "Czechia",
@@ -63,25 +34,6 @@ CLEAN_TEAM_MAP = {
     "colombia": "Colombia", "drcongo": "DR Congo", "congodr": "DR Congo",
     "england": "England", "croatia": "Croatia", "ghana": "Ghana", "panama": "Panama"
 }
-
-FIXED_R32_MATCHES = [
-    {"match_no": 1, "date": "Sun, 28 Jun, 21:00", "home": "South Africa", "away": "Canada", "id_tag": "M73"},
-    {"match_no": 2, "date": "Mon, 29 Jun, 19:00", "home": "Brazil", "away": "Japan", "id_tag": "M74"},
-    {"match_no": 3, "date": "Mon, 29 Jun, 22:30", "home": "Germany", "away": "TBD", "id_tag": "M75"},
-    {"match_no": 4, "date": "Tue, 30 Jun, 03:00", "home": "Netherlands", "away": "Morocco", "id_tag": "M76"},
-    {"match_no": 5, "date": "Tue, 30 Jun, 19:00", "home": "Côte d'Ivoire", "away": "TBD", "id_tag": "M77"},
-    {"match_no": 6, "date": "Tue, 30 Jun, 23:00", "home": "TBD", "away": "TBD", "id_tag": "M78"},
-    {"match_no": 7, "date": "Wed, 1 Jul, 03:00", "home": "Mexico", "away": "TBD", "id_tag": "M79"},
-    {"match_no": 8, "date": "Wed, 1 Jul, 18:00", "home": "TBD", "away": "TBD", "id_tag": "M80"},
-    {"match_no": 9, "date": "Wed, 1 Jul, 22:00", "home": "TBD", "away": "TBD", "id_tag": "M81"},
-    {"match_no": 10, "date": "Thu, 2 Jul, 02:00", "home": "USA", "away": "Bosnia and Herzegovina", "id_tag": "M82"},
-    {"match_no": 11, "date": "Thu, 2 Jul, 21:00", "home": "TBD", "away": "TBD", "id_tag": "M83"},
-    {"match_no": 12, "date": "Fri, 3 Jul, 01:00", "home": "TBD", "away": "TBD", "id_tag": "M84"},
-    {"match_no": 13, "date": "Fri, 3 Jul, 05:00", "home": "Switzerland", "away": "TBD", "id_tag": "M85"},
-    {"match_no": 14, "date": "Fri, 3 Jul, 20:00", "home": "Australia", "away": "TBD", "id_tag": "M86"},
-    {"match_no": 15, "date": "Sat, 4 Jul, 00:00", "home": "Argentina", "away": "TBD", "id_tag": "M87"},
-    {"match_no": 16, "date": "Sat, 4 Jul, 03:30", "home": "TBD", "away": "TBD", "id_tag": "M88"}
-]
 
 BRACKET_MAPPING = {
     "ROUND_OF_16": {"M89": ("M73", "M76"), "M90": ("M74", "M77"), "M91": ("M75", "M82"), "M92": ("M78", "M79"), "M93": ("M80", "M81"), "M94": ("M83", "M84"), "M95": ("M85", "M86"), "M96": ("M87", "M88")},
@@ -112,10 +64,8 @@ def connect_to_sheet(tab_name="sheet1", retries=3):
                     return new_tab
             return spreadsheet.sheet1 if tab_name == "sheet1" else spreadsheet.worksheet(tab_name)
         except gspread.exceptions.APIError as e:
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
-            else:
-                raise e
+            if attempt < retries - 1: time.sleep(2 ** attempt)
+            else: raise e
 
 def get_registered_players(retries=3):
     for attempt in range(retries):
@@ -127,54 +77,19 @@ def get_registered_players(retries=3):
                 if len(df.columns) >= 2:
                     return sorted(list(df['Name'].astype(str).str.strip().unique()))
             return []
-        except gspread.exceptions.APIError:
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
-            else:
-                st.error("⚠️ Could not load player list.")
-                return []
-        except Exception as e:
-            st.error(f"⚠️ Unexpected error loading players: {e}")
+        except:
+            if attempt < retries - 1: time.sleep(2 ** attempt)
             return []
 
 def save_pick_with_retry(ko_sheet, row_i, new_row, retries=3):
     for attempt in range(retries):
         try:
-            if row_i != -1:
-                ko_sheet.update(range_name=f"A{row_i}:G{row_i}", values=[new_row])
-            else:
-                ko_sheet.append_row(new_row)
+            if row_i != -1: ko_sheet.update(range_name=f"A{row_i}:G{row_i}", values=[new_row])
+            else: ko_sheet.append_row(new_row)
             return True
-        except gspread.exceptions.APIError:
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
-            else:
-                return False
-
-@st.cache_data(ttl=10800)
-def fetch_and_merge_api_data():
-    headers = {'X-Auth-Token': API_KEY}
-    response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
-    if response.status_code != 200: raise Exception(f"HTTP Error {response.status_code}")
-    data = response.json()
-    updated_map = {}
-    for block in data.get('standings', []):
-        clean_group_key = None
-        raw_group_name = block.get('group')
-        if raw_group_name:
-            group_str = str(raw_group_name).upper()
-            match = re.search(r'\b([A-L])\b|GROUP[\s_-]*([A-L])', group_str)
-            if match: clean_group_key = f"Group {match.group(1) or match.group(2)}"
-        if clean_group_key in INITIAL_SEED_STANDINGS:
-            ordered_teams = []
-            for row in block.get('table', []):
-                team_node = row.get('team', {})
-                raw_name = team_node.get('shortName') or team_node.get('name')
-                if raw_name: ordered_teams.append(CLEAN_TEAM_MAP.get(standardize_string(raw_name), raw_name))
-            for team in INITIAL_SEED_STANDINGS[clean_group_key]:
-                if team not in ordered_teams: ordered_teams.append(team)
-            if len(ordered_teams) >= 4: updated_map[clean_group_key] = ordered_teams[:4]
-    return updated_map
+        except:
+            if attempt < retries - 1: time.sleep(2 ** attempt)
+            return False
 
 @st.cache_data(ttl=1800)
 def fetch_live_matches_api():
@@ -182,29 +97,55 @@ def fetch_live_matches_api():
     try:
         response = requests.get(f"{MATCHES_URL}?season=2026", headers=headers, timeout=12)
         if response.status_code == 200: return response.json().get('matches', [])
-    except Exception as e:
-        st.warning(f"⚠️ Could not fetch live match data: {e}")
-    return []
+    except:
+        return []
 
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
-page = st.sidebar.radio("Navigation Menu", ["Knockout Predictions", "Leaderboard", "Group Predictions (Closed)", "Rules & Chat Forum"])
-registered_players = get_registered_players()
 
+# Sidebar and User Selection
 with st.sidebar:
     st.header("Player Login")
+    registered_players = get_registered_players()
+    user_type = st.selectbox("User Mode", ["General User", "Parent/Teacher"])
+    
+    if user_type == "Parent/Teacher":
+        age = st.number_input("Enter kid's age:", min_value=1, max_value=18, value=10)
+        
     if registered_players:
         selected_dropdown_name = st.selectbox("Identify Profile Name:", ["-- Select Profile --"] + registered_players)
         user_name = selected_dropdown_name if selected_dropdown_name != "-- Select Profile --" else ""
     else:
-        st.warning("⚠️ Could not load player list.")
         user_name = ""
+    
     st.divider()
-    if st.button("🔄 Clear System Cache / Sync Data", use_container_width=True):
+    if st.button("🔄 Clear Cache / Refresh Data"):
         st.cache_data.clear()
         st.rerun()
 
-if "ko_winners" not in st.session_state: 
-    st.session_state.ko_winners = {}
+page = st.sidebar.radio("Navigation Menu", ["Knockout Predictions", "Leaderboard", "Group Predictions (Closed)", "Rules & Chat Forum"])
+
+if "ko_winners" not in st.session_state: st.session_state.ko_winners = {}
+
+# --- Dynamic Match Parsing Helper ---
+def get_dynamic_r32_matches(all_matches):
+    """Filters API matches for R32/Last 16 and maps them to M73-M88 IDs."""
+    ko_list = [m for m in all_matches if str(m.get('stage', '')).upper() in ['ROUND_OF_32', 'LAST_16', 'KNOCKOUT']]
+    ko_list.sort(key=lambda x: x.get('utcDate', '9999-12-31'))
+    
+    mapped = {}
+    for i in range(16):
+        match_id = f"M{73 + i}"
+        if i < len(ko_list):
+            m = ko_list[i]
+            mapped[match_id] = {
+                "api_match": m,
+                "home": CLEAN_TEAM_MAP.get(standardize_string(m.get('homeTeam', {}).get('name')), m.get('homeTeam', {}).get('name', 'TBD')),
+                "away": CLEAN_TEAM_MAP.get(standardize_string(m.get('awayTeam', {}).get('name')), m.get('awayTeam', {}).get('name', 'TBD')),
+                "date": m.get('utcDate', '')
+            }
+        else:
+            mapped[match_id] = {"api_match": None, "home": "TBD", "away": "TBD", "date": None}
+    return mapped
 
 if page == "Knockout Predictions":
     st.title("🏆 Interactive Knockout Bracket Engine")
@@ -212,12 +153,7 @@ if page == "Knockout Predictions":
         st.info("👈 Authenticate to open your bracket.")
     else:
         st.success(f"Log-In User: **{user_name}**")
-        try:
-            ko_sheet = connect_to_sheet("Knockout_Picks")
-        except Exception as e:
-            st.error(f"❌ Could not connect to picks sheet: {e}")
-            st.stop()
-
+        ko_sheet = connect_to_sheet("Knockout_Picks")
         user_ko_df = pd.DataFrame(ko_sheet.get_all_records())
         if not user_ko_df.empty:
             user_ko_df = user_ko_df[user_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()]
@@ -225,22 +161,21 @@ if page == "Knockout Predictions":
                 st.session_state.ko_winners[str(row['Match_ID'])] = str(row['Winner'])
 
         raw_matches = fetch_live_matches_api()
+        dynamic_matches = get_dynamic_r32_matches(raw_matches)
 
-        def draw_match_ui(tag, home, away, is_locked, match_no, date, stage):
+        def draw_match_ui(tag, home, away, is_locked, stage):
             exist_row = user_ko_df[user_ko_df['Match_ID'].astype(str) == tag] if not user_ko_df.empty else pd.DataFrame()
             default_h = int(exist_row['Home_Score'].values[0]) if not exist_row.empty else 0
             default_a = int(exist_row['Away_Score'].values[0]) if not exist_row.empty else 0
             default_w = str(exist_row['Winner'].values[0]) if not exist_row.empty else home
             
             with st.container():
-                st.write("---") 
-                if date: st.caption(f"📅 Match {match_no} • {date}")
+                st.write("---")
                 c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
                 with c1:
                     st.markdown(f"**{home}**")
                     h_score = st.number_input("Goals", min_value=0, value=default_h, key=f"h_s_{tag}", disabled=is_locked)
-                with c2: 
-                    st.markdown("<br><p style='text-align:center;'>VS</p>", unsafe_allow_html=True)
+                with c2: st.markdown("<br><p style='text-align:center;'>VS</p>", unsafe_allow_html=True)
                 with c3:
                     st.markdown(f"**{away}**")
                     a_score = st.number_input("Goals", min_value=0, value=default_a, key=f"a_s_{tag}", disabled=is_locked)
@@ -250,153 +185,50 @@ if page == "Knockout Predictions":
                     else:
                         chosen_winner = home if h_score > a_score else away
                         st.markdown(f"<br><p><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
-
                 st.session_state.ko_winners[tag] = chosen_winner
                 
-                sub_c1, sub_c2 = st.columns([2, 2])
-                with sub_c1:
-                    if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
-                        row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
-                        new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
-                        success = save_pick_with_retry(ko_sheet, row_i, new_row)
-                        if success:
-                            st.toast("✅ Saved!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to save.")
-                
-                with sub_c2:
-                    if not exist_row.empty:
-                        st.markdown("🟢 **Submitted**")
+                if st.button("Lock Score", key=f"btn_s_{tag}", disabled=is_locked):
+                    row_i = next((i + 2 for i, r in enumerate(ko_sheet.get_all_records()) if str(r.get('Name')).lower() == user_name.lower() and str(r.get('Match_ID')) == tag), -1)
+                    new_row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name.strip(), tag, int(h_score), int(a_score), chosen_winner, stage]
+                    if save_pick_with_retry(ko_sheet, row_i, new_row): st.rerun()
 
         st.subheader("1️⃣ Round of 32")
-        
-        # Pull ALL knockout matches regardless of what the API names the stage, sort by chronological time
-        ko_matches = [m for m in raw_matches if str(m.get('stage', '')).upper() not in ['GROUP_STAGE', 'REGULAR_SEASON', 'NONE', '']]
-        ko_matches.sort(key=lambda x: x.get('utcDate', '9999-12-31'))
-        
-        mapped_api_matches = {}
-        
-        # If the API populated the full bracket (at least 16 matches), strictly match them chronologically
-        if len(ko_matches) >= 16:
-            for i, f in enumerate(FIXED_R32_MATCHES):
-                m = ko_matches[i]
-                api_h_raw = m.get('homeTeam', {}).get('name', '')
-                api_a_raw = m.get('awayTeam', {}).get('name', '')
-                
-                api_h = CLEAN_TEAM_MAP.get(standardize_string(api_h_raw), api_h_raw) if api_h_raw else "TBD"
-                api_a = CLEAN_TEAM_MAP.get(standardize_string(api_a_raw), api_a_raw) if api_a_raw else "TBD"
-                
-                if not api_h: api_h = "TBD"
-                if not api_a: api_a = "TBD"
-                
-                mapped_api_matches[f['id_tag']] = {"api_match": m, "real_home": api_h, "real_away": api_a}
-        else:
-            # Fallback for partial data: aggressively search the entire knockout list for any matching teams
-            for f in FIXED_R32_MATCHES:
-                for m in ko_matches:
-                    api_h_raw = m.get('homeTeam', {}).get('name', '')
-                    api_a_raw = m.get('awayTeam', {}).get('name', '')
-                    
-                    api_h = CLEAN_TEAM_MAP.get(standardize_string(api_h_raw), api_h_raw)
-                    api_a = CLEAN_TEAM_MAP.get(standardize_string(api_a_raw), api_a_raw)
-                    
-                    if (f['home'] != "TBD" and f['home'] in [api_h, api_a]) or \
-                       (f['away'] != "TBD" and f['away'] in [api_h, api_a]):
-                        mapped_api_matches[f['id_tag']] = {"api_match": m, "real_home": api_h, "real_away": api_a}
-                        break
-
-        for f in FIXED_R32_MATCHES:
-            tag = f['id_tag']
-            match_data = mapped_api_matches.get(tag)
-            
-            if match_data:
-                h = match_data['real_home']
-                a = match_data['real_away']
-                is_locked = match_data['api_match'].get('status') not in ["TIMED", "SCHEDULED", None]
-            else:
-                h = f['home']
-                a = f['away']
-                is_locked = False
-                
-            draw_match_ui(tag, h, a, is_locked, f['match_no'], f['date'], "ROUND_OF_32")
+        for tag, info in dynamic_matches.items():
+            is_locked = (info['api_match'] and info['api_match'].get('status') not in ["TIMED", "SCHEDULED"])
+            draw_match_ui(tag, info['home'], info['away'], is_locked, "ROUND_OF_32")
 
         for stage, label in [("ROUND_OF_16", "2️⃣ R16"), ("QUARTER_FINALS", "3️⃣ QF"), ("SEMI_FINALS", "4️⃣ SF"), ("FINAL", "5️⃣ Final")]:
             st.subheader(label)
             for m_id, src in BRACKET_MAPPING.get(stage, {}).items():
-                h_team = st.session_state.ko_winners.get(src[0], f"Winner {src[0]}")
-                a_team = st.session_state.ko_winners.get(src[1], f"Winner {src[1]}")
-                draw_match_ui(m_id, h_team, a_team, False, 0, None, stage)
-
-        st.write("---")
-        st.subheader("🏁 Tie-Breaker")
-        tb_val = st.number_input("Total goals in knockout stage:", min_value=0, value=int(user_ko_df[user_ko_df['Match_ID'] == 'TIE_BREAKER']['Home_Score'].iloc[0] if 'TIE_BREAKER' in user_ko_df['Match_ID'].values else 0))
-        if st.button("Submit Tie-Breaker"):
-            success = save_pick_with_retry(ko_sheet, -1, [datetime.now().strftime("%Y-%m-%d"), user_name, "TIE_BREAKER", tb_val, 0, "N/A", "TIE"])
-            if success:
-                st.success("Tie-breaker submitted!")
-                st.rerun()
-            else:
-                st.error("❌ Failed to save.")
+                draw_match_ui(m_id, st.session_state.ko_winners.get(src[0], f"Winner {src[0]}"), st.session_state.ko_winners.get(src[1], f"Winner {src[1]}"), False, stage)
 
 elif page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
-    live_matches = fetch_live_matches_api()
-    try:
-        all_picks = pd.DataFrame(connect_to_sheet("Knockout_Picks").get_all_records())
-    except Exception as e:
-        st.error(f"❌ Could not load picks: {e}")
-        st.stop()
-
-    ko_matches = [m for m in live_matches if str(m.get('stage', '')).upper() not in ['GROUP_STAGE', 'REGULAR_SEASON', 'NONE', '']]
-    ko_matches.sort(key=lambda x: x.get('utcDate', '9999-12-31'))
-
-    tag_to_api_match = {}
-    if len(ko_matches) >= 16:
-        for i, f in enumerate(FIXED_R32_MATCHES):
-            tag_to_api_match[f['id_tag']] = ko_matches[i]
-    else:
-        for f in FIXED_R32_MATCHES:
-            for m in ko_matches:
-                api_h = CLEAN_TEAM_MAP.get(standardize_string(m.get('homeTeam', {}).get('name')), m.get('homeTeam', {}).get('name'))
-                api_a = CLEAN_TEAM_MAP.get(standardize_string(m.get('awayTeam', {}).get('name')), m.get('awayTeam', {}).get('name'))
-                if (f['home'] != "TBD" and f['home'] in [api_h, api_a]) or (f['away'] != "TBD" and f['away'] in [api_h, api_a]):
-                    tag_to_api_match[f['id_tag']] = m
-                    break
-
+    all_picks = pd.DataFrame(connect_to_sheet("Knockout_Picks").get_all_records())
+    raw_matches = fetch_live_matches_api()
+    dynamic_matches = get_dynamic_r32_matches(raw_matches)
+    
+    # Create lookup for points
     def calc_score(row):
         score = 0
         u_picks = all_picks[all_picks['Name'].astype(str).str.lower() == str(row['Name']).lower()]
         for _, p in u_picks.iterrows():
-            m = tag_to_api_match.get(str(p['Match_ID']))
-            
-            if m and m.get('status') in ['FINISHED', 'AWARDED']:
-                ft = m.get('score', {}).get('fullTime', {})
+            m_data = dynamic_matches.get(str(p['Match_ID']))
+            if m_data and m_data['api_match'] and m_data['api_match'].get('status') in ['FINISHED', 'AWARDED']:
+                ft = m_data['api_match'].get('score', {}).get('fullTime', {})
+                if str(p['Home_Score']) == str(ft.get('home')): score += 1
+                if str(p['Away_Score']) == str(ft.get('away')): score += 1
                 
-                if ft and ft.get('home') is not None and str(p['Home_Score']) == str(ft.get('home')): 
-                    score += 1
-                if ft and ft.get('away') is not None and str(p['Away_Score']) == str(ft.get('away')): 
-                    score += 1
-
-                api_winner = m.get('score', {}).get('winner')
-                home_team = CLEAN_TEAM_MAP.get(standardize_string(m.get('homeTeam', {}).get('name')), str(m.get('homeTeam', {}).get('name')))
-                away_team = CLEAN_TEAM_MAP.get(standardize_string(m.get('awayTeam', {}).get('name')), str(m.get('awayTeam', {}).get('name')))
-                
-                actual_advancing = None
-                if api_winner == 'HOME_TEAM': actual_advancing = home_team
-                elif api_winner == 'AWAY_TEAM': actual_advancing = away_team
-
-                if actual_advancing and standardize_string(str(p['Winner'])) == standardize_string(actual_advancing): 
-                    score += 1
+                api_winner = m_data['api_match'].get('score', {}).get('winner')
+                # Simplified winner logic
+                if api_winner == 'HOME_TEAM' and standardize_string(str(p['Winner'])) == standardize_string(m_data['home']): score += 1
+                elif api_winner == 'AWAY_TEAM' and standardize_string(str(p['Winner'])) == standardize_string(m_data['away']): score += 1
         return score
 
-    try:
-        df = pd.DataFrame(connect_to_sheet("sheet1").get_all_records())
-        if not df.empty:
-            df['Points'] = df.apply(calc_score, axis=1)
-            st.table(df[['Name', 'Points']].sort_values(by='Points', ascending=False))
-    except Exception as e:
-        st.error(f"❌ Could not load leaderboard: {e}")
+    df = pd.DataFrame(connect_to_sheet("sheet1").get_all_records())
+    if not df.empty:
+        df['Points'] = df.apply(calc_score, axis=1)
+        st.table(df[['Name', 'Points']].sort_values(by='Points', ascending=False))
 
 elif page == "Rules & Chat Forum":
     st.title("📜 Pool Rules")
