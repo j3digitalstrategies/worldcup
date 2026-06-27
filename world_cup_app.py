@@ -64,7 +64,27 @@ CLEAN_TEAM_MAP = {
     "england": "England", "croatia": "Croatia", "ghana": "Ghana", "panama": "Panama"
 }
 
-R32_FALLBACK = {}  # No fallback guessing — only show teams the API has confirmed
+R32_FALLBACK = {
+    # Official FIFA match numbers with confirmed teams (Sky Sports / FIFA Jun 27 2026)
+    # API always takes priority — these only fill in when API returns NULL
+    # Remove an entry once the API starts populating it correctly
+    "M73": ("South Africa",  "Canada"),        # Jun 28
+    "M74": ("Germany",       "Paraguay"),      # Jun 29
+    "M75": ("Netherlands",   "Morocco"),       # Jun 30 (2am ET)
+    "M76": ("Brazil",        "Japan"),         # Jun 29
+    "M77": ("France",        "Sweden"),        # Jun 30
+    "M78": ("Ivory Coast",   "Norway"),        # Jun 30
+    "M79": ("Mexico",        "TBD"),           # Jul 1 - 3rd place C/E/F/H/I not yet confirmed
+    "M80": ("England",       "TBD"),           # Jul 1 - L winner vs 3rd not yet confirmed
+    "M81": ("USA",           "Bosnia"),        # Jul 2
+    "M82": ("Belgium",       "Ecuador"),       # Jul 1
+    "M83": ("Australia",     "Egypt"),         # Jul 2
+    "M84": ("Spain",         "Austria"),       # Jul 2 - J2 not yet confirmed (Algeria or Austria)
+    "M85": ("Switzerland",   "TBD"),           # Jul 3 - 3rd place not yet confirmed
+    "M86": ("Argentina",     "Cape Verde"),    # Jul 3
+    "M87": ("TBD",           "TBD"),           # Jul 3 - K2 vs L2 not yet confirmed
+    "M88": ("Colombia",      "TBD"),           # Jul 3 - K1 vs 3rd not yet confirmed
+}
 
 R32_SLOTS = [
     {"match_no": 1,  "date": "Sun, 28 Jun, 3:00 PM ET",  "id_tag": "M73"},
@@ -292,43 +312,71 @@ def fetch_all_knockout_matches():
             stage_to_tags[stage] = size_to_tags[n]
             used.add(n)
 
-    # Build tag_to_match by iterating each mapped stage in chronological order
+    # Build tag_to_match by matching API matches to M-tags via team name
+    # This is reliable: we look up each fallback team in the API data by name,
+    # rather than assuming the API returns matches in our expected positional order.
     tag_to_match = {}
     for stage, tags in stage_to_tags.items():
         api_matches = ko_by_stage[stage]
-        for i, tag in enumerate(tags):
-            fb = R32_FALLBACK.get(tag, ("TBD", "TBD"))
-            if i < len(api_matches):
-                m = api_matches[i]
-                h_raw = (m.get('homeTeam', {}).get('name') or
-                         m.get('homeTeam', {}).get('shortName') or '').strip()
-                a_raw = (m.get('awayTeam', {}).get('name') or
-                         m.get('awayTeam', {}).get('shortName') or '').strip()
-                h = clean_team(h_raw) if h_raw else "TBD"
-                a = clean_team(a_raw) if a_raw else "TBD"
+
+        # Index API matches by cleaned home and away team name
+        api_by_home = {}
+        api_by_away = {}
+        for m in api_matches:
+            h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
+            a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
+            if h_raw:
+                api_by_home[clean_team(h_raw)] = m
+            if a_raw:
+                api_by_away[clean_team(a_raw)] = m
+
+        assigned_ids = set()
+
+        for tag in tags:
+            fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
+
+            # Find the API match by looking up either known team name
+            matched_m = None
+            for name in [fb_home, fb_away]:
+                if name == "TBD":
+                    continue
+                if name in api_by_home and api_by_home[name].get('id') not in assigned_ids:
+                    matched_m = api_by_home[name]
+                    break
+                if name in api_by_away and api_by_away[name].get('id') not in assigned_ids:
+                    matched_m = api_by_away[name]
+                    break
+
+            if matched_m:
+                assigned_ids.add(matched_m.get('id'))
+                h_raw = (matched_m.get('homeTeam', {}).get('name') or matched_m.get('homeTeam', {}).get('shortName') or '').strip()
+                a_raw = (matched_m.get('awayTeam', {}).get('name') or matched_m.get('awayTeam', {}).get('shortName') or '').strip()
+                h = clean_team(h_raw) if h_raw else fb_home
+                a = clean_team(a_raw) if a_raw else fb_away
                 tag_to_match[tag] = {
                     "home":      h,
                     "away":      a,
-                    "status":    m.get('status', 'SCHEDULED'),
-                    "score":     m.get('score', {}),
-                    "winner":    m.get('score', {}).get('winner'),
+                    "status":    matched_m.get('status', 'SCHEDULED'),
+                    "score":     matched_m.get('score', {}),
+                    "winner":    matched_m.get('score', {}).get('winner'),
                     "stage_raw": stage,
-                    "api_id":    m.get('id'),
+                    "api_id":    matched_m.get('id'),
                 }
             else:
+                # No API match found — use fallback
                 tag_to_match[tag] = {
-                    "home": "TBD", "away": "TBD",
+                    "home": fb_home, "away": fb_away,
                     "status": "SCHEDULED", "score": {},
                     "winner": None, "stage_raw": "", "api_id": None
                 }
 
-    # Fill any tags not yet assigned (API round not returned yet)
+    # Fill any tags from rounds not yet in the API
     all_tags = [tag for _, _, tags in ROUND_SIZES for tag in tags]
     for tag in all_tags:
         if tag not in tag_to_match:
-            fb = R32_FALLBACK.get(tag, ("TBD", "TBD"))
+            fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
             tag_to_match[tag] = {
-                "home": "TBD", "away": "TBD",
+                "home": fb_home, "away": fb_away,
                 "status": "SCHEDULED", "score": {},
                 "winner": None, "stage_raw": "", "api_id": None
             }
