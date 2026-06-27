@@ -306,52 +306,103 @@ def fetch_all_knockout_matches():
             stage_to_tags[stage] = size_to_tags[n]
             used.add(n)
 
-    # Map API matches to M-tags by chronological position within each round.
-    # The API returns R32 matches sorted by utcDate which matches the official order.
-    # For confirmed slots (in R32_FALLBACK): if API has a NULL team, patch it.
-    # For unconfirmed slots: show exactly what the API returns — TBD if NULL.
-    tag_to_match = {}
+    # Strategy: match API matches to M-tags by team name using R32_FALLBACK as the key.
+    # For confirmed slots: find the API match whose teams match the fallback, use API data.
+    # For unconfirmed slots: show TBD — never guess.
+    # This avoids positional errors entirely.
+
+    # Index all R32 API matches by every known team name
+    r32_stage = None
     for stage, tags in stage_to_tags.items():
-        api_matches = ko_by_stage[stage]
-        for i, tag in enumerate(tags):
-            if i < len(api_matches):
-                m = api_matches[i]
-                h_raw = (m.get('homeTeam', {}).get('name') or
-                         m.get('homeTeam', {}).get('shortName') or '').strip()
-                a_raw = (m.get('awayTeam', {}).get('name') or
-                         m.get('awayTeam', {}).get('shortName') or '').strip()
-                h = clean_team(h_raw) if h_raw else "TBD"
-                a = clean_team(a_raw) if a_raw else "TBD"
-                # Only patch NULLs from fallback for slots we have confirmed
-                if tag in R32_FALLBACK:
-                    fb_home, fb_away = R32_FALLBACK[tag]
-                    if h == "TBD": h = fb_home
-                    if a == "TBD": a = fb_away
+        if len(tags) == 16:
+            r32_stage = stage
+            break
+
+    api_r32 = ko_by_stage.get(r32_stage, []) if r32_stage else []
+    api_by_team = {}
+    for m in api_r32:
+        h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
+        a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
+        if h_raw: api_by_team[clean_team(h_raw)] = m
+        if a_raw: api_by_team[clean_team(a_raw)] = m
+
+    tag_to_match = {}
+    assigned_ids = set()
+
+    # Process R32 slots
+    r32_tags = [tag for _, size, tags in ROUND_SIZES if size == 16 for tag in tags]
+    for tag in r32_tags:
+        if tag in R32_FALLBACK:
+            fb_home, fb_away = R32_FALLBACK[tag]
+            # Find API match by looking up the confirmed team names
+            matched_m = None
+            for name in [fb_home, fb_away]:
+                if name != "TBD" and name in api_by_team:
+                    candidate = api_by_team[name]
+                    if candidate.get('id') not in assigned_ids:
+                        matched_m = candidate
+                        break
+            if matched_m:
+                assigned_ids.add(matched_m.get('id'))
+                h_raw = (matched_m.get('homeTeam', {}).get('name') or matched_m.get('homeTeam', {}).get('shortName') or '').strip()
+                a_raw = (matched_m.get('awayTeam', {}).get('name') or matched_m.get('awayTeam', {}).get('shortName') or '').strip()
+                h = clean_team(h_raw) if h_raw else fb_home
+                a = clean_team(a_raw) if a_raw else fb_away
                 tag_to_match[tag] = {
-                    "home":      h,
-                    "away":      a,
-                    "status":    m.get('status', 'SCHEDULED'),
-                    "score":     m.get('score', {}),
-                    "winner":    m.get('score', {}).get('winner'),
-                    "stage_raw": stage,
-                    "api_id":    m.get('id'),
+                    "home": h, "away": a,
+                    "status": matched_m.get('status', 'SCHEDULED'),
+                    "score": matched_m.get('score', {}),
+                    "winner": matched_m.get('score', {}).get('winner'),
+                    "stage_raw": r32_stage or '',
+                    "api_id": matched_m.get('id'),
                 }
             else:
-                # API doesn't have this slot yet — use fallback or TBD
-                fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
+                # Confirmed fixture but API hasn't populated it yet
                 tag_to_match[tag] = {
                     "home": fb_home, "away": fb_away,
                     "status": "SCHEDULED", "score": {},
                     "winner": None, "stage_raw": "", "api_id": None
                 }
+        else:
+            # Not in fallback = not confirmed = TBD
+            tag_to_match[tag] = {
+                "home": "TBD", "away": "TBD",
+                "status": "SCHEDULED", "score": {},
+                "winner": None, "stage_raw": "", "api_id": None
+            }
 
-    # Fill tags from rounds not yet returned by the API at all
+    # Process later rounds (R16, QF, SF, Final) purely from API by position
+    for stage, tags in stage_to_tags.items():
+        if len(tags) == 16:
+            continue  # already handled R32 above
+        api_matches = ko_by_stage.get(stage, [])
+        for i, tag in enumerate(tags):
+            if i < len(api_matches):
+                m = api_matches[i]
+                h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
+                a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
+                tag_to_match[tag] = {
+                    "home": clean_team(h_raw) if h_raw else "TBD",
+                    "away": clean_team(a_raw) if a_raw else "TBD",
+                    "status": m.get('status', 'SCHEDULED'),
+                    "score": m.get('score', {}),
+                    "winner": m.get('score', {}).get('winner'),
+                    "stage_raw": stage,
+                    "api_id": m.get('id'),
+                }
+            else:
+                tag_to_match[tag] = {
+                    "home": "TBD", "away": "TBD",
+                    "status": "SCHEDULED", "score": {},
+                    "winner": None, "stage_raw": "", "api_id": None
+                }
+
+    # Fill any remaining tags
     all_tags = [tag for _, _, tags in ROUND_SIZES for tag in tags]
     for tag in all_tags:
         if tag not in tag_to_match:
-            fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
             tag_to_match[tag] = {
-                "home": fb_home, "away": fb_away,
+                "home": "TBD", "away": "TBD",
                 "status": "SCHEDULED", "score": {},
                 "winner": None, "stage_raw": "", "api_id": None
             }
