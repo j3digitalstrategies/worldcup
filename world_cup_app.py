@@ -65,43 +65,42 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # Source: Google World Cup bracket - exact confirmed fixtures Jun 27 2026
-    # API takes priority for scores/status. Fallback only fills NULL team names.
-    "M73": ("South Africa",  "Canada"),
-    "M74": ("Germany",       "Paraguay"),
-    "M75": ("Netherlands",   "Morocco"),
-    "M76": ("Brazil",        "Japan"),
-    "M77": ("France",        "Sweden"),
-    "M78": ("Ivory Coast",   "Norway"),
-    "M79": ("Mexico",        "TBD"),
-    "M80": ("TBD",           "TBD"),
-    "M81": ("USA",           "Bosnia"),
-    "M82": ("Belgium",       "TBD"),
-    "M83": ("Australia",     "Egypt"),
-    "M84": ("Spain",         "TBD"),
-    "M85": ("Switzerland",   "TBD"),
-    "M86": ("Argentina",     "Cape Verde"),
-    "M87": ("TBD",           "TBD"),
-    "M88": ("TBD",           "TBD"),
+    # Ordered by match date exactly as shown on Google Jun 27 2026
+    "M73": ("South Africa",  "Canada"),       # Sun 28 Jun 21:00
+    "M74": ("Germany",       "Paraguay"),     # Mon 29 Jun 22:30
+    "M75": ("Netherlands",   "Morocco"),      # Tue 30 Jun 03:00
+    "M76": ("Brazil",        "Japan"),        # Mon 29 Jun 19:00
+    "M77": ("France",        "Sweden"),       # Tue 30 Jun 23:00
+    "M78": ("Ivory Coast",   "Norway"),       # Tue 30 Jun 19:00
+    "M79": ("Mexico",        "TBD"),          # Wed 1 Jul 03:00
+    "M80": ("TBD",           "TBD"),          # Wed 1 Jul 18:00
+    "M81": ("USA",           "Bosnia"),       # Thu 2 Jul 02:00
+    "M82": ("Belgium",       "TBD"),          # Wed 1 Jul 22:00
+    "M83": ("Australia",     "Egypt"),        # Fri 3 Jul 20:00
+    "M84": ("Spain",         "TBD"),          # Thu 2 Jul 21:00
+    "M85": ("Switzerland",   "TBD"),          # Fri 3 Jul 05:00
+    "M86": ("Argentina",     "Cape Verde"),   # Sat 4 Jul 00:00
+    "M87": ("TBD",           "TBD"),          # Fri 3 Jul 01:00
+    "M88": ("TBD",           "TBD"),          # Sat 4 Jul 03:30
 }
 
 R32_SLOTS = [
-    {"match_no": 1,  "date": "Sun, 28 Jun, 3:00 PM ET",  "id_tag": "M73"},
-    {"match_no": 2,  "date": "Mon, 29 Jun, 1:00 PM ET",  "id_tag": "M74"},
-    {"match_no": 3,  "date": "Mon, 29 Jun, 9:00 PM ET",  "id_tag": "M75"},
-    {"match_no": 4,  "date": "Mon, 29 Jun, 5:00 PM ET",  "id_tag": "M76"},
-    {"match_no": 5,  "date": "Tue, 30 Jun, 1:00 PM ET",  "id_tag": "M77"},
-    {"match_no": 6,  "date": "Tue, 30 Jun, 5:00 PM ET",  "id_tag": "M78"},
-    {"match_no": 7,  "date": "Wed, 1 Jul, 9:00 PM ET",   "id_tag": "M79"},
-    {"match_no": 8,  "date": "Wed, 1 Jul, 12:00 PM ET",  "id_tag": "M80"},
-    {"match_no": 9,  "date": "Wed, 1 Jul, 4:00 PM ET",   "id_tag": "M81"},
-    {"match_no": 10, "date": "Thu, 2 Jul, 8:00 PM ET",   "id_tag": "M82"},
-    {"match_no": 11, "date": "Thu, 2 Jul, 2:00 PM ET",   "id_tag": "M83"},
-    {"match_no": 12, "date": "Fri, 3 Jul, 9:00 PM ET",   "id_tag": "M84"},
-    {"match_no": 13, "date": "Fri, 3 Jul, 2:00 PM ET",   "id_tag": "M85"},
-    {"match_no": 14, "date": "Fri, 3 Jul, 6:00 PM ET",   "id_tag": "M86"},
-    {"match_no": 15, "date": "Fri, 3 Jul, 9:30 PM ET",   "id_tag": "M87"},
-    {"match_no": 16, "date": "Sat, 4 Jul, 11:00 AM ET",  "id_tag": "M88"},
+    {"match_no": 1,  "date": "Sun, 28 Jun, 21:00", "id_tag": "M73"},
+    {"match_no": 2,  "date": "Mon, 29 Jun, 19:00", "id_tag": "M76"},
+    {"match_no": 3,  "date": "Mon, 29 Jun, 22:30", "id_tag": "M74"},
+    {"match_no": 4,  "date": "Tue, 30 Jun, 03:00", "id_tag": "M75"},
+    {"match_no": 5,  "date": "Tue, 30 Jun, 19:00", "id_tag": "M78"},
+    {"match_no": 6,  "date": "Tue, 30 Jun, 23:00", "id_tag": "M77"},
+    {"match_no": 7,  "date": "Wed, 1 Jul, 03:00",  "id_tag": "M79"},
+    {"match_no": 8,  "date": "Wed, 1 Jul, 18:00",  "id_tag": "M80"},
+    {"match_no": 9,  "date": "Wed, 1 Jul, 22:00",  "id_tag": "M82"},
+    {"match_no": 10, "date": "Thu, 2 Jul, 02:00",  "id_tag": "M81"},
+    {"match_no": 11, "date": "Thu, 2 Jul, 21:00",  "id_tag": "M84"},
+    {"match_no": 12, "date": "Fri, 3 Jul, 01:00",  "id_tag": "M87"},
+    {"match_no": 13, "date": "Fri, 3 Jul, 05:00",  "id_tag": "M85"},
+    {"match_no": 14, "date": "Fri, 3 Jul, 20:00",  "id_tag": "M83"},
+    {"match_no": 15, "date": "Sat, 4 Jul, 00:00",  "id_tag": "M86"},
+    {"match_no": 16, "date": "Sat, 4 Jul, 03:30",  "id_tag": "M88"},
 ]
 
 BRACKET_MAPPING = {
