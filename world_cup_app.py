@@ -391,7 +391,7 @@ def fetch_all_knockout_matches():
 
 st.set_page_config(page_title="2026 WC Portal", layout="wide")
 page = st.sidebar.radio("Navigation Menu", [
-    "Leaderboard", "Knockout Predictions", "Group Predictions (Closed)", "Rules & Chat Forum"
+    "Knockout Predictions", "Leaderboard", "Group Predictions (Closed)", "Rules & Chat Forum"
 ])
 
 # Load player names from cache — one read shared by everyone
@@ -435,7 +435,7 @@ if "ko_winners" not in st.session_state:
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: LEADERBOARD
 # ══════════════════════════════════════════════════════════════════════════════
-if page == "Leaderboard":
+elif page == "Leaderboard":
     st.title("📊 Live Automated Leaderboard")
 
     if "group_standings_cache" not in st.session_state:
@@ -574,7 +574,7 @@ if page == "Leaderboard":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: KNOCKOUT PREDICTIONS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "Knockout Predictions":
+if page == "Knockout Predictions":
     st.title("🏆 Interactive Knockout Bracket Engine")
 
     tag_to_match = fetch_all_knockout_matches()
@@ -637,7 +637,7 @@ elif page == "Knockout Predictions":
                         chosen_winner = home if h_score > a_score else away
                         st.markdown(f"<br><p><b>Advances:</b> {chosen_winner}</p>", unsafe_allow_html=True)
 
-                st.session_state.ko_winners[tag] = chosen_winner
+                st.session_state.ko_winners[tag] = chosen_winner if not exist_row.empty else None
 
                 sub_c1, sub_c2 = st.columns([2,2])
                 with sub_c1:
@@ -672,8 +672,9 @@ elif page == "Knockout Predictions":
                     home = info["home"]
                     away = info["away"]
                 else:
-                    home = st.session_state.ko_winners.get(src_h, f"Winner {src_h}")
-                    away = st.session_state.ko_winners.get(src_a, f"Winner {src_a}")
+                    # Only show a team if the user has actually saved a pick for that feeder match
+                    home = st.session_state.ko_winners.get(src_h) or "TBD"
+                    away = st.session_state.ko_winners.get(src_a) or "TBD"
                 is_locked = info.get("status") not in ["TIMED","SCHEDULED",None,""]
                 draw_match_ui(m_id, home, away, is_locked, 0, None, stage)
 
@@ -710,13 +711,36 @@ elif page == "Group Predictions (Closed)":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Rules & Chat Forum":
     st.title("📜 Pool Rules & Payment")
-    with st.expander("View Full Rules & Payment Details", expanded=True):
-        st.warning("⚠️ **Deadline:** All picks must be submitted before kick-off.")
-        st.write("**Group Stage Scoring:** 1 point per correct finishing position (max 4 pts/group, 48 pts total).")
-        st.write("**Knockout Scoring:** 1 pt correct home score + 1 pt correct away score + 1 pt correct winner (max 3 pts/match).")
+
+    with st.expander("💰 Entry Fee & Prizes", expanded=True):
         st.write("**Entry Fee:** $10 USD / $15 CAD / £7.50 GBP")
         st.info("**USA:** Venmo @jhradecky  \n**Canada:** E-transfer julien.hradecky@gmail.com")
-        st.write("**Prizes:** 1st: 70% | 2nd: 20% | 3rd: Refund")
+        st.write("**Prize Distribution:** 1st place: 70% | 2nd place: 20% | 3rd place: Full refund")
+        st.warning("⚠️ All knockout picks must be submitted before each match kicks off.")
+
+    with st.expander("📋 Scoring System", expanded=True):
+        st.markdown("### Group Stage *(now closed)*")
+        st.write("1 point per correct finishing position in each group (1st, 2nd, 3rd, 4th).")
+        st.write("Maximum: 4 points per group × 12 groups = **48 points total**.")
+
+        st.markdown("### Knockout Rounds")
+        st.write("For each knockout match you predict:")
+        st.markdown("""
+| Correct prediction | Points |
+|---|---|
+| Exact home team score | 1 pt |
+| Exact away team score | 1 pt |
+| Correct winner / team that advances | 1 pt |
+""")
+        st.write("**Maximum 3 points per match** × 31 knockout matches = **93 points total.**")
+        st.info("💡 If a match goes to extra time or penalties, the score you predict is the score after 90 minutes. The winner pick is whoever actually advances (regardless of how).")
+
+    with st.expander("🏁 Tie-Breaker", expanded=True):
+        st.markdown("### How the Tie-Breaker Works")
+        st.write("At the bottom of the Knockout Predictions page, you submit a single number: your prediction for the **total number of goals scored across all 31 knockout matches** (excluding the third-place playoff).")
+        st.write("The tie-breaker is only used if two or more players are level on points at the end of the tournament. The player whose tie-breaker guess is **closest to the actual total** wins the tiebreak.")
+        st.write("If two players are still tied after the tie-breaker, the one who submitted their picks **earliest** wins.")
+        st.info("💡 Tip: The 2022 World Cup knockout stage (16 matches) produced 64 goals. With 31 matches this time, somewhere in the 100–140 range is a reasonable starting point — but it's your call!")
 
     st.divider()
     st.header("💬 Chat Forum")
