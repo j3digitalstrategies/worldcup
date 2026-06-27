@@ -64,7 +64,28 @@ CLEAN_TEAM_MAP = {
     "england": "England", "croatia": "Croatia", "ghana": "Ghana", "panama": "Panama"
 }
 
-# Slot schedule: dates/times only — teams come from API
+# Fallback fixture table — used when API returns NULL for a team.
+# API takes priority when it has real data. Update TBDs as games are confirmed.
+R32_FALLBACK = {
+    "M73": ("South Africa", "Canada"),
+    "M74": ("Brazil",       "Japan"),
+    "M75": ("Germany",      "Paraguay"),
+    "M76": ("Netherlands",  "Morocco"),
+    "M77": ("Ivory Coast",  "Norway"),
+    "M78": ("TBD",          "TBD"),
+    "M79": ("Mexico",       "TBD"),
+    "M80": ("TBD",          "TBD"),
+    "M81": ("TBD",          "TBD"),
+    "M82": ("USA",          "Bosnia"),
+    "M83": ("TBD",          "TBD"),
+    "M84": ("TBD",          "TBD"),
+    "M85": ("Switzerland",  "TBD"),
+    "M86": ("Australia",    "TBD"),
+    "M87": ("Argentina",    "Cape Verde"),
+    "M88": ("TBD",          "TBD"),
+}
+
+# Slot schedule: dates/times only — teams come from API (with fallback above)
 R32_SLOTS = [
     {"match_no": 1,  "date": "Sun, 28 Jun, 21:00", "id_tag": "M73"},
     {"match_no": 2,  "date": "Mon, 29 Jun, 19:00", "id_tag": "M74"},
@@ -102,7 +123,7 @@ ROUND_SIZES = [
 ]
 
 # Group stage stage names to EXCLUDE from knockout list
-GROUP_STAGE_KEYWORDS = {"GROUP", "REGULAR", "PRELIMINARY", "QUALIFYING", "PLAY_OFF_ROUND"}
+GROUP_STAGE_KEYWORDS = {"GROUP", "REGULAR", "PRELIMINARY", "QUALIFYING", "PLAY_OFF_ROUND", "THIRD_PLACE"}
 
 def standardize_string(val):
     if val is None: return ""
@@ -262,6 +283,11 @@ def fetch_all_knockout_matches():
                 a_raw = m.get('awayTeam',{}).get('name') or m.get('awayTeam',{}).get('shortName') or ''
                 h = clean_team(h_raw) if h_raw.strip() else "TBD"
                 a = clean_team(a_raw) if a_raw.strip() else "TBD"
+                # Apply fallback for R32 if API has NULLs
+                if h == "TBD" or a == "TBD":
+                    fb = R32_FALLBACK.get(tag, ("TBD","TBD"))
+                    if h == "TBD": h = fb[0]
+                    if a == "TBD": a = fb[1]
                 tag_to_match[tag] = {
                     "home":      h,
                     "away":      a,
@@ -272,8 +298,10 @@ def fetch_all_knockout_matches():
                     "api_id":    m.get('id'),
                 }
             else:
+                # No API match at all — use fallback
+                fb = R32_FALLBACK.get(tag, ("TBD","TBD"))
                 tag_to_match[tag] = {
-                    "home":"TBD","away":"TBD","status":"SCHEDULED",
+                    "home": fb[0], "away": fb[1], "status": "SCHEDULED",
                     "score":{},"winner":None,"stage_raw":"","api_id":None
                 }
 
