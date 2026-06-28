@@ -105,16 +105,16 @@ R32_SLOTS = [
 ]
 
 BRACKET_MAPPING = {
-    # Source: FIFA official bracket (fifa.com)
-    # M89 = W74 vs W77  → winner of Germany/Paraguay vs winner of France/Sweden
-    # M90 = W73 vs W75  → winner of SA/Canada vs winner of Netherlands/Morocco
-    # M91 = W76 vs W78  → winner of Brazil/Japan vs winner of Ivory Coast/Norway
-    # M92 = W79 vs W80  → winner of Mexico/Ecuador vs winner of England/DR Congo
-    # M93 = W83 vs W84  → winner of Portugal/Croatia vs winner of Spain/Austria
-    # M94 = W81 vs W82  → winner of USA/Bosnia vs winner of Belgium/Senegal
-    # M95 = W86 vs W88  → winner of Argentina/Cape Verde vs winner of Colombia/Ghana
-    # M96 = W85 vs W87  → winner of Switzerland/Algeria vs winner of Portugal/Croatia -- NO
-    # M96 = W85 vs W87  → winner of Switzerland/Algeria vs winner of Portugal(K)/Croatia(L)
+    # Source: FIFA official bracket (fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026)
+    # R16
+    # M89 = W74 vs W77  → W Germany/Paraguay    vs W France/Sweden
+    # M90 = W73 vs W75  → W South Africa/Canada vs W Netherlands/Morocco
+    # M91 = W76 vs W78  → W Brazil/Japan        vs W Ivory Coast/Norway
+    # M92 = W79 vs W80  → W Mexico/Ecuador      vs W England/DR Congo
+    # M93 = W83 vs W84  → W Portugal/Croatia    vs W Spain/Austria
+    # M94 = W81 vs W82  → W USA/Bosnia          vs W Belgium/Senegal
+    # M95 = W86 vs W88  → W Argentina/Cape Verde vs W Colombia/Ghana
+    # M96 = W85 vs W87  → W Switzerland/Algeria vs W Portugal/Croatia (M87)
     "ROUND_OF_16": {
         "M89": ("M74", "M77"),
         "M90": ("M73", "M75"),
@@ -125,16 +125,26 @@ BRACKET_MAPPING = {
         "M95": ("M86", "M88"),
         "M96": ("M85", "M87"),
     },
+    # QF
+    # M97  = W89 vs W90
+    # M98  = W93 vs W94
+    # M99  = W91 vs W92
+    # M100 = W95 vs W96
     "QUARTER_FINALS": {
         "M97":  ("M89", "M90"),
         "M98":  ("M93", "M94"),
         "M99":  ("M91", "M92"),
         "M100": ("M95", "M96"),
     },
+    # SF
+    # M101 = W97 vs W98
+    # M102 = W99 vs W100
     "SEMI_FINALS": {
-        "M101": ("M97", "M98"),
-        "M102": ("M99", "M100"),
+        "M101": ("M97",  "M98"),
+        "M102": ("M99",  "M100"),
     },
+    # Final
+    # M104 = W101 vs W102
     "FINAL": {
         "M104": ("M101", "M102"),
     }
@@ -343,7 +353,6 @@ def fetch_all_knockout_matches():
     assigned_ids = set()
     for tag in r32_tags:
         fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
-        # Find API match for score/status by looking up either confirmed team
         matched_m = None
         for name in [fb_home, fb_away]:
             if name != "TBD" and name in api_by_team:
@@ -362,40 +371,76 @@ def fetch_all_knockout_matches():
             "api_id":    matched_m.get('id') if matched_m else None,
         }
 
-    # ── Later rounds: purely from API by position ──────────────────────────────
-    size_to_tags = {size: tags for _, size, tags in ROUND_SIZES if size < 16}
-    used_stages = set()
-    for _, size, tags in ROUND_SIZES:
-        if size >= 16:
-            continue
-        # Find API stage with matching count
-        api_matches = []
-        for stage, matches in sorted(ko_by_stage.items(), key=lambda x: -len(x[1])):
-            if stage not in used_stages and len(matches) == size:
-                api_matches = matches
-                used_stages.add(stage)
-                break
-        for i, tag in enumerate(tags):
-            if i < len(api_matches):
-                m = api_matches[i]
-                h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
-                a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
-                tag_to_match[tag] = {
-                    "home":   clean_team(h_raw) if h_raw else "TBD",
-                    "away":   clean_team(a_raw) if a_raw else "TBD",
-                    "status": m.get('status', 'SCHEDULED'),
-                    "score":  m.get('score', {}),
-                    "winner": m.get('score', {}).get('winner'),
-                    "stage_raw": m.get('stage', ''),
-                    "api_id": m.get('id'),
+    # ── Derive actual winners from completed R32 matches ─────────────────────
+    # For each R32 match, figure out which team actually won (or is TBD if not played)
+    def get_winner_of(m_tag):
+        """Return the actual winning team name from a completed match, or None if not yet played."""
+        info = tag_to_match.get(m_tag, {})
+        if info.get('status') not in ['FINISHED', 'AWARDED']:
+            return None
+        api_winner = info.get('winner')  # 'HOME_TEAM' or 'AWAY_TEAM'
+        if api_winner == 'HOME_TEAM':
+            return info['home']
+        elif api_winner == 'AWAY_TEAM':
+            return info['away']
+        return None
+
+    # ── R16, QF, SF, Final: look up by team names derived from bracket ────────
+    # For each later-round match, derive the expected team names from who won
+    # the feeder R32 matches, then find the API match by those team names.
+    later_round_order = [
+        ("ROUND_OF_16",    "M89","M90","M91","M92","M93","M94","M95","M96"),
+        ("QUARTER_FINALS", "M97","M98","M99","M100"),
+        ("SEMI_FINALS",    "M101","M102"),
+        ("FINAL",          "M104"),
+    ]
+
+    for round_name, *round_tags in later_round_order:
+        for m_id in round_tags:
+            src_h, src_a = BRACKET_MAPPING[round_name][m_id]
+            # Get the expected teams from whoever won the feeder matches
+            expected_home = get_winner_of(src_h)
+            expected_away = get_winner_of(src_a)
+
+            # Try to find the API match using either expected team name
+            matched_m = None
+            for name in [expected_home, expected_away]:
+                if name and name in api_by_team:
+                    candidate = api_by_team[name]
+                    if candidate.get('id') not in assigned_ids:
+                        matched_m = candidate
+                        assigned_ids.add(candidate.get('id'))
+                        break
+
+            if matched_m:
+                h_raw = (matched_m.get('homeTeam', {}).get('name') or
+                         matched_m.get('homeTeam', {}).get('shortName') or '').strip()
+                a_raw = (matched_m.get('awayTeam', {}).get('name') or
+                         matched_m.get('awayTeam', {}).get('shortName') or '').strip()
+                h = clean_team(h_raw) if h_raw else (expected_home or "TBD")
+                a = clean_team(a_raw) if a_raw else (expected_away or "TBD")
+                tag_to_match[m_id] = {
+                    "home":      h,
+                    "away":      a,
+                    "status":    matched_m.get('status', 'SCHEDULED'),
+                    "score":     matched_m.get('score', {}),
+                    "winner":    matched_m.get('score', {}).get('winner'),
+                    "stage_raw": matched_m.get('stage', ''),
+                    "api_id":    matched_m.get('id'),
                 }
             else:
-                tag_to_match[tag] = {
-                    "home": "TBD", "away": "TBD", "status": "SCHEDULED",
-                    "score": {}, "winner": None, "stage_raw": "", "api_id": None
+                # API doesn't have this match yet — use derived team names if known
+                tag_to_match[m_id] = {
+                    "home":      expected_home or "TBD",
+                    "away":      expected_away or "TBD",
+                    "status":    "SCHEDULED",
+                    "score":     {},
+                    "winner":    None,
+                    "stage_raw": "",
+                    "api_id":    None,
                 }
 
-    # Fill any gaps
+    # Fill any remaining gaps
     for _, _, tags in ROUND_SIZES:
         for tag in tags:
             if tag not in tag_to_match:
