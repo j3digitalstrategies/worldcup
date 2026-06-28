@@ -65,24 +65,24 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # All 16 R32 fixtures fully confirmed - hardcoded as source of truth for team names
-    # API is still used for match status and scores only
-    "M73": ("South Africa",  "Canada"),       # Sun 28 Jun 21:00
-    "M74": ("Germany",       "Paraguay"),     # Mon 29 Jun 22:30
-    "M75": ("Netherlands",   "Morocco"),      # Tue 30 Jun 03:00
-    "M76": ("Brazil",        "Japan"),        # Mon 29 Jun 19:00
-    "M77": ("France",        "Sweden"),       # Tue 30 Jun 23:00
-    "M78": ("Ivory Coast",   "Norway"),       # Tue 30 Jun 19:00
-    "M79": ("Mexico",        "Ecuador"),      # Wed 1 Jul 03:00
-    "M80": ("England",       "DR Congo"),     # Wed 1 Jul 18:00
-    "M81": ("USA",           "Bosnia"),       # Thu 2 Jul 02:00
-    "M82": ("Belgium",       "Senegal"),      # Wed 1 Jul 22:00
-    "M83": ("Australia",     "Egypt"),        # Fri 3 Jul 20:00
-    "M84": ("Spain",         "Austria"),      # Thu 2 Jul 21:00
-    "M85": ("Switzerland",   "Algeria"),      # Fri 3 Jul 05:00
-    "M86": ("Argentina",     "Cape Verde"),   # Sat 4 Jul 00:00
-    "M87": ("Portugal",      "Croatia"),      # Fri 3 Jul 01:00
-    "M88": ("Colombia",      "Ghana"),        # Sat 4 Jul 03:30
+    # Source: FIFA official / Wikipedia - correct match slot assignments
+    # API used for status/scores only. These team names are authoritative.
+    "M73": ("South Africa",  "Canada"),      # Runner-up A vs Runner-up B
+    "M74": ("Germany",       "Paraguay"),    # Winner E vs best 3rd A/B/C/D/F
+    "M75": ("Netherlands",   "Morocco"),     # Winner F vs Runner-up C
+    "M76": ("Brazil",        "Japan"),       # Winner C vs Runner-up F
+    "M77": ("France",        "Sweden"),      # Winner I vs best 3rd C/D/F/G/H
+    "M78": ("Ivory Coast",   "Norway"),      # Runner-up E vs Runner-up I
+    "M79": ("Mexico",        "Ecuador"),     # Winner A vs best 3rd C/E/F/H/I
+    "M80": ("England",       "DR Congo"),    # Winner L vs best 3rd E/H/I/J/K
+    "M81": ("USA",           "Bosnia"),      # Winner D vs best 3rd B/E/F/I/J
+    "M82": ("Belgium",       "Senegal"),     # Winner G vs best 3rd A/E/H/I/J
+    "M83": ("Portugal",      "Croatia"),     # Runner-up K vs Runner-up L
+    "M84": ("Spain",         "Austria"),     # Winner H vs Runner-up J
+    "M85": ("Switzerland",   "Algeria"),     # Winner B vs best 3rd E/F/G/I/J
+    "M86": ("Argentina",     "Cape Verde"),  # Winner J vs Runner-up H
+    "M87": ("Colombia",      "Ghana"),       # Winner K vs best 3rd D/E/I/J/L
+    "M88": ("Australia",     "Egypt"),       # Runner-up D vs Runner-up G
 }
 
 R32_SLOTS = [
@@ -355,12 +355,18 @@ def fetch_all_knockout_matches():
         fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
         matched_m = None
         for name in [fb_home, fb_away]:
-            if name != "TBD" and name in api_by_team:
-                candidate = api_by_team[name]
-                if candidate.get('id') not in assigned_ids:
-                    matched_m = candidate
-                    assigned_ids.add(candidate.get('id'))
-                    break
+            if name == "TBD":
+                continue
+            # Try clean name first, then raw variations
+            for lookup in [name, name.lower(), standardize_string(name)]:
+                if lookup in api_by_team:
+                    candidate = api_by_team[lookup]
+                    if candidate.get('id') not in assigned_ids:
+                        matched_m = candidate
+                        assigned_ids.add(candidate.get('id'))
+                        break
+            if matched_m:
+                break
         tag_to_match[tag] = {
             "home":      fb_home,
             "away":      fb_away,
@@ -744,11 +750,13 @@ if page == "Knockout Predictions":
             st.subheader(label)
             for m_id, (src_h, src_a) in BRACKET_MAPPING[stage].items():
                 info = tag_to_match.get(m_id, {})
-                if info.get("home","TBD") != "TBD":
+                if info.get("home","TBD") not in ["TBD",""] and info.get("away","TBD") not in ["TBD",""]:
+                    # API has confirmed both teams for this match already
                     home = info["home"]
                     away = info["away"]
                 else:
-                    # Only show a team if the user has actually saved a pick for that feeder match
+                    # Use the user's own saved picks to cascade — not API results
+                    # If they haven't picked a winner for a feeder match yet, show TBD
                     home = st.session_state.ko_winners.get(src_h) or "TBD"
                     away = st.session_state.ko_winners.get(src_a) or "TBD"
                 is_locked = info.get("status") not in ["TIMED","SCHEDULED",None,""]
