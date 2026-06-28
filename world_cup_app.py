@@ -105,11 +105,39 @@ R32_SLOTS = [
 ]
 
 BRACKET_MAPPING = {
-    "ROUND_OF_16":    {"M89": ("M73","M76"), "M90": ("M74","M77"), "M91": ("M75","M82"), "M92": ("M78","M79"),
-                       "M93": ("M80","M81"), "M94": ("M83","M84"), "M95": ("M85","M86"), "M96": ("M87","M88")},
-    "QUARTER_FINALS": {"M97": ("M89","M90"), "M98": ("M91","M92"), "M99": ("M93","M94"), "M100": ("M95","M96")},
-    "SEMI_FINALS":    {"M101": ("M97","M98"), "M102": ("M99","M100")},
-    "FINAL":          {"M104": ("M101","M102")}
+    # Source: FIFA official bracket (fifa.com)
+    # M89 = W74 vs W77  → winner of Germany/Paraguay vs winner of France/Sweden
+    # M90 = W73 vs W75  → winner of SA/Canada vs winner of Netherlands/Morocco
+    # M91 = W76 vs W78  → winner of Brazil/Japan vs winner of Ivory Coast/Norway
+    # M92 = W79 vs W80  → winner of Mexico/Ecuador vs winner of England/DR Congo
+    # M93 = W83 vs W84  → winner of Portugal/Croatia vs winner of Spain/Austria
+    # M94 = W81 vs W82  → winner of USA/Bosnia vs winner of Belgium/Senegal
+    # M95 = W86 vs W88  → winner of Argentina/Cape Verde vs winner of Colombia/Ghana
+    # M96 = W85 vs W87  → winner of Switzerland/Algeria vs winner of Portugal/Croatia -- NO
+    # M96 = W85 vs W87  → winner of Switzerland/Algeria vs winner of Portugal(K)/Croatia(L)
+    "ROUND_OF_16": {
+        "M89": ("M74", "M77"),
+        "M90": ("M73", "M75"),
+        "M91": ("M76", "M78"),
+        "M92": ("M79", "M80"),
+        "M93": ("M83", "M84"),
+        "M94": ("M81", "M82"),
+        "M95": ("M86", "M88"),
+        "M96": ("M85", "M87"),
+    },
+    "QUARTER_FINALS": {
+        "M97":  ("M89", "M90"),
+        "M98":  ("M93", "M94"),
+        "M99":  ("M91", "M92"),
+        "M100": ("M95", "M96"),
+    },
+    "SEMI_FINALS": {
+        "M101": ("M97", "M98"),
+        "M102": ("M99", "M100"),
+    },
+    "FINAL": {
+        "M104": ("M101", "M102"),
+    }
 }
 
 ROUND_SIZES = [
