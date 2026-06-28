@@ -65,23 +65,24 @@ CLEAN_TEAM_MAP = {
 }
 
 R32_FALLBACK = {
-    # Ordered by match date exactly as shown on Google Jun 27 2026
+    # All 16 R32 fixtures fully confirmed - hardcoded as source of truth for team names
+    # API is still used for match status and scores only
     "M73": ("South Africa",  "Canada"),       # Sun 28 Jun 21:00
     "M74": ("Germany",       "Paraguay"),     # Mon 29 Jun 22:30
     "M75": ("Netherlands",   "Morocco"),      # Tue 30 Jun 03:00
     "M76": ("Brazil",        "Japan"),        # Mon 29 Jun 19:00
     "M77": ("France",        "Sweden"),       # Tue 30 Jun 23:00
     "M78": ("Ivory Coast",   "Norway"),       # Tue 30 Jun 19:00
-    "M79": ("Mexico",        "TBD"),          # Wed 1 Jul 03:00
-    "M80": ("TBD",           "TBD"),          # Wed 1 Jul 18:00
+    "M79": ("Mexico",        "Ecuador"),      # Wed 1 Jul 03:00
+    "M80": ("England",       "DR Congo"),     # Wed 1 Jul 18:00
     "M81": ("USA",           "Bosnia"),       # Thu 2 Jul 02:00
-    "M82": ("Belgium",       "TBD"),          # Wed 1 Jul 22:00
+    "M82": ("Belgium",       "Senegal"),      # Wed 1 Jul 22:00
     "M83": ("Australia",     "Egypt"),        # Fri 3 Jul 20:00
-    "M84": ("Spain",         "TBD"),          # Thu 2 Jul 21:00
-    "M85": ("Switzerland",   "TBD"),          # Fri 3 Jul 05:00
+    "M84": ("Spain",         "Austria"),      # Thu 2 Jul 21:00
+    "M85": ("Switzerland",   "Algeria"),      # Fri 3 Jul 05:00
     "M86": ("Argentina",     "Cape Verde"),   # Sat 4 Jul 00:00
-    "M87": ("TBD",           "TBD"),          # Fri 3 Jul 01:00
-    "M88": ("TBD",           "TBD"),          # Sat 4 Jul 03:30
+    "M87": ("Portugal",      "Croatia"),      # Fri 3 Jul 01:00
+    "M88": ("Colombia",      "Ghana"),        # Sat 4 Jul 03:30
 }
 
 R32_SLOTS = [
@@ -224,7 +225,7 @@ def save_pick(new_row, retries=3):
 
 # ── API fetchers (unchanged, already cached) ───────────────────────────────────
 
-@st.cache_data(ttl=10800)
+@st.cache_data(ttl=300)
 def fetch_group_standings():
     headers = {'X-Auth-Token': API_KEY}
     response = requests.get(f"{BASE_URL}?season=2026", headers=headers, timeout=12)
