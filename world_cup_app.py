@@ -114,7 +114,7 @@ BRACKET_MAPPING = {
     # M93 = W83 vs W84  → W Portugal/Croatia    vs W Spain/Austria
     # M94 = W81 vs W82  → W USA/Bosnia          vs W Belgium/Senegal
     # M95 = W86 vs W88  → W Argentina/Cape Verde vs W Colombia/Ghana
-    # M96 = W85 vs W87  → W Switzerland/Algeria vs W Portugal/Croatia (M87)
+    # M96 = W85 vs W87  → W Switzerland/Algeria vs W Colombia/Ghana
     "ROUND_OF_16": {
         "M89": ("M74", "M77"),
         "M90": ("M73", "M75"),
@@ -323,7 +323,10 @@ def fetch_all_knockout_matches():
     except Exception:
         all_matches = []
 
-    # Index all API knockout matches by team name for score/status lookup
+    # Index all API knockout matches by team name for score/status lookup.
+    # IMPORTANT: skip placeholder matches where the opponent isn't determined yet
+    # (awayTeam.name is null) — these are future-round slots, not real fixtures,
+    # and must never overwrite a real completed match for the same team name.
     api_by_team = {}
     ko_by_stage = {}
     for m in all_matches:
@@ -331,16 +334,21 @@ def fetch_all_knockout_matches():
         if is_group_stage(stage):
             continue
         ko_by_stage.setdefault(stage, []).append(m)
-        for side in ['homeTeam', 'awayTeam']:
-            team = m.get(side, {})
-            # Try every possible field the API might use for team name
-            raw = (team.get('name') or team.get('shortName') or
-                   team.get('tla') or team.get('crestUrl') or '').strip()
-            # Also try id-based lookup isn't helpful but log what we have
-            if raw and raw != 'null':
-                ct = clean_team(raw)
-                api_by_team[ct] = m
-                api_by_team[raw] = m  # also store raw in case clean_team misses it
+
+        home_raw = (m.get('homeTeam', {}).get('name') or
+                    m.get('homeTeam', {}).get('shortName') or '').strip()
+        away_raw = (m.get('awayTeam', {}).get('name') or
+                    m.get('awayTeam', {}).get('shortName') or '').strip()
+
+        # Only index this match's teams if BOTH sides are determined —
+        # otherwise it's a future bracket slot, not a real fixture to score against
+        if not home_raw or not away_raw:
+            continue
+
+        for raw in [home_raw, away_raw]:
+            ct = clean_team(raw)
+            api_by_team[ct] = m
+            api_by_team[raw] = m
 
     for stage in ko_by_stage:
         ko_by_stage[stage].sort(key=lambda x: x.get('utcDate', '9999'))
@@ -455,15 +463,6 @@ def fetch_all_knockout_matches():
                     "score": {}, "winner": None, "stage_raw": "", "api_id": None
                 }
 
-    tag_to_match["__debug__"] = {
-        "total_api_matches": len(all_matches),
-        "knockout_by_stage": {s: len(v) for s, v in ko_by_stage.items()},
-        "api_teams_found": list(api_by_team.keys())[:20],
-        "raw_sample": [
-            {"stage": m.get('stage'), "homeTeam": m.get('homeTeam'), "awayTeam": m.get('awayTeam')}
-            for m in list(ko_by_stage.get('LAST_32', ko_by_stage.get(list(ko_by_stage.keys())[0], [])) if ko_by_stage else [])[:3]
-        ],
-    }
     tag_to_match["__debug__"] = {
         "total_api_matches": len(all_matches),
         "knockout_by_stage": {s: len(v) for s, v in ko_by_stage.items()},
@@ -732,7 +731,7 @@ if page == "Knockout Predictions":
                 ['Name','Match_ID'], as_index=False).last()
 
         user_ko_df = all_ko_df[
-            all_ko_df['Name'].astype(str).str.lower() == user_name.strip().lower()
+            all_ko_df['Name'].astype(str).str.strip().str.lower() == user_name.strip().lower()
         ] if not all_ko_df.empty else pd.DataFrame()
 
         if not user_ko_df.empty:
