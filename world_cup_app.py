@@ -464,6 +464,13 @@ def fetch_all_knockout_matches():
             for m in list(ko_by_stage.get('LAST_32', ko_by_stage.get(list(ko_by_stage.keys())[0], [])) if ko_by_stage else [])[:3]
         ],
     }
+    tag_to_match["__debug__"] = {
+        "total_api_matches": len(all_matches),
+        "knockout_by_stage": {s: len(v) for s, v in ko_by_stage.items()},
+        "api_teams_found": list(api_by_team.keys())[:20],
+        "brazil_lookup": api_by_team.get("Brazil", "NOT FOUND"),
+        "japan_lookup": api_by_team.get("Japan", "NOT FOUND"),
+    }
     return tag_to_match
 
 
@@ -678,6 +685,10 @@ elif page == "Leaderboard":
             debug = tag_to_match.get("__debug__", {})
             st.write(f"Total API matches: `{debug.get('total_api_matches','?')}`")
             st.write(f"Stages: `{debug.get('knockout_by_stage',{})}`")
+            st.write("**Raw Brazil lookup from api_by_team:**")
+            st.json(debug.get('brazil_lookup', 'N/A'))
+            st.write("**Raw Japan lookup from api_by_team:**")
+            st.json(debug.get('japan_lookup', 'N/A'))
             st.write("**R32 match statuses (live from API):**")
             r32_status = {k: {"home": v["home"], "away": v["away"], "status": v["status"],
                               "winner": v.get("winner"),
