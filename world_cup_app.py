@@ -615,17 +615,15 @@ elif page == "Leaderboard":
                 regular_time = score_obj.get('regularTime') or {}
 
                 # football-data.org sometimes reports fullTime as inflated by penalty
-                # shootout score (e.g. 1-1 + 3-4 pens = "4-5"). We only want the
-                # 90/120-minute score for Home/Away score points, never penalties.
+                # shootout score. We want the actual 90/120-minute score for
+                # Home/Away score points, never penalties.
                 if duration == 'PENALTY_SHOOTOUT':
-                    # Prefer explicit extraTime or regularTime fields if present
-                    if extra_time.get('home') is not None and extra_time.get('away') is not None:
-                        real_home, real_away = extra_time['home'], extra_time['away']
-                    elif regular_time.get('home') is not None and regular_time.get('away') is not None:
+                    # regularTime is the cleanest source — prefer it first
+                    if regular_time.get('home') is not None and regular_time.get('away') is not None:
                         real_home, real_away = regular_time['home'], regular_time['away']
+                    elif extra_time.get('home') is not None and extra_time.get('away') is not None:
+                        real_home, real_away = extra_time['home'], extra_time['away']
                     else:
-                        # Last resort: fullTime here is the actual 90/120-min score
-                        # (not all APIs inflate it) — use as-is
                         real_home, real_away = full_time.get('home'), full_time.get('away')
                 elif extra_time.get('home') is not None and extra_time.get('away') is not None:
                     real_home, real_away = extra_time['home'], extra_time['away']
