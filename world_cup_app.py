@@ -872,7 +872,14 @@ if page == "Knockout Predictions":
                 if not match_all_picks.empty:
                     with st.expander(f"👀 See everyone's picks ({len(match_all_picks)})"):
                         display_df = match_all_picks[['Name', 'Home_Score', 'Away_Score', 'Winner']].copy()
-                        display_df.columns = ['Name', f'{home}', f'{away}', 'Winner']
+                        match_finished = tag_to_match.get(tag, {}).get('status') in ('FINISHED', 'AWARDED')
+                        if match_finished:
+                            display_df['Points'] = match_all_picks.apply(
+                                lambda r: calc_match_points(tag, r), axis=1
+                            )
+                            display_df.columns = ['Name', f'{home}', f'{away}', 'Winner', 'Points']
+                        else:
+                            display_df.columns = ['Name', f'{home}', f'{away}', 'Winner']
                         display_df = display_df.sort_values('Name').reset_index(drop=True)
                         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
