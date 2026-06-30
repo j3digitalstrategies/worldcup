@@ -739,6 +739,52 @@ if page == "Knockout Predictions":
                 st.session_state.ko_winners[str(row['Match_ID'])] = str(row['Winner'])
 
         # FIX 6: draw_match_ui takes pre-loaded data — zero sheet reads inside
+        def calc_match_points(tag, pick_row):
+            """Calculate points earned for a single locked-in pick, if the match is finished."""
+            match_info = tag_to_match.get(tag, {})
+            if match_info.get('status') not in ('FINISHED', 'AWARDED'):
+                return None  # Not finished yet — no points to show
+
+            score_obj = match_info.get('score') or {}
+            duration = score_obj.get('duration', 'REGULAR')
+            full_time = score_obj.get('fullTime') or {}
+            extra_time = score_obj.get('extraTime') or {}
+            regular_time = score_obj.get('regularTime') or {}
+
+            if duration == 'PENALTY_SHOOTOUT':
+                if regular_time.get('home') is not None and regular_time.get('away') is not None:
+                    real_home, real_away = regular_time['home'], regular_time['away']
+                elif extra_time.get('home') is not None and extra_time.get('away') is not None:
+                    real_home, real_away = extra_time['home'], extra_time['away']
+                else:
+                    real_home, real_away = full_time.get('home'), full_time.get('away')
+            elif extra_time.get('home') is not None and extra_time.get('away') is not None:
+                real_home, real_away = extra_time['home'], extra_time['away']
+            else:
+                real_home, real_away = full_time.get('home'), full_time.get('away')
+
+            pick_home = str(pick_row.get('Home_Score', '')).strip()
+            pick_away = str(pick_row.get('Away_Score', '')).strip()
+
+            pts = 0
+            if real_home is not None and pick_home == str(real_home):
+                pts += 1
+            if real_away is not None and pick_away == str(real_away):
+                pts += 1
+
+            api_winner_side = score_obj.get('winner')
+            if api_winner_side == 'HOME_TEAM':
+                actual_winner_team = match_info.get('home')
+            elif api_winner_side == 'AWAY_TEAM':
+                actual_winner_team = match_info.get('away')
+            else:
+                actual_winner_team = None
+
+            if actual_winner_team and standardize_string(str(pick_row.get('Winner', ''))) == standardize_string(actual_winner_team):
+                pts += 1
+
+            return pts
+
         def draw_match_ui(tag, home, away, is_locked, match_no, date, stage):
             exist_row = user_ko_df[user_ko_df['Match_ID'].astype(str) == tag] \
                 if not user_ko_df.empty else pd.DataFrame()
@@ -786,6 +832,17 @@ if page == "Knockout Predictions":
                 with sub_c2:
                     if not exist_row.empty:
                         st.markdown("🟢 **Submitted**")
+
+                # Show points earned for this match if it's finished and the user has a saved pick
+                if not exist_row.empty:
+                    pts_earned = calc_match_points(tag, exist_row.iloc[0])
+                    if pts_earned is not None:
+                        if pts_earned == 3:
+                            st.success(f"🎯 You earned **{pts_earned}/3 points** on this match — perfect pick!")
+                        elif pts_earned > 0:
+                            st.info(f"✅ You earned **{pts_earned}/3 points** on this match.")
+                        else:
+                            st.error(f"❌ You earned **0/3 points** on this match.")
 
         st.subheader("1️⃣ Round of 32")
         for slot in R32_SLOTS:
