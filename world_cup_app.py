@@ -649,6 +649,8 @@ elif page == "Leaderboard":
             st.write(f"Total API matches: `{debug.get('total_api_matches','?')}`")
             st.write(f"Stages: `{debug.get('knockout_by_stage',{})}`")
             st.write(f"API teams found: `{debug.get('api_teams_found',[])}`")
+            st.write("**🔍 M73 full debug (South Africa vs Canada):**")
+            st.json(tag_to_match.get("M73", {}))
             st.write("**R32 match statuses:**")
             r32_status = {k: {"home": v["home"], "away": v["away"], "status": v["status"], "winner": v.get("winner"), "score": v.get("score",{}).get("fullTime",{})}
                          for k, v in tag_to_match.items() if k in ["M73","M74","M75","M76","M77","M78","M79","M80","M81","M82","M83","M84","M85","M86","M87","M88"]}
