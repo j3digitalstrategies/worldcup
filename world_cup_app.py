@@ -680,6 +680,29 @@ elif page == "Leaderboard":
             cols[5].download_button("📥 CSV", data=csv,
                 file_name=f"{row['Name']}_picks.csv", key=f"dl_{row['Name']}")
 
+        st.divider()
+        with st.expander("📊 Pick Distribution — see how everyone voted"):
+            st.write("Shows how many players picked each team to advance, per match.")
+            if ko_df.empty:
+                st.info("No knockout picks submitted yet.")
+            else:
+                all_tags_in_order = [tag for _, _, tags in ROUND_SIZES for tag in tags]
+                for tag in all_tags_in_order:
+                    match_picks = ko_df[ko_df['Match_ID'].astype(str) == tag]
+                    if match_picks.empty:
+                        continue
+                    info = tag_to_match.get(tag, {})
+                    home = info.get("home", "TBD")
+                    away = info.get("away", "TBD")
+                    winner_counts = match_picks['Winner'].astype(str).str.strip().value_counts()
+                    total_picks = len(match_picks)
+                    st.markdown(f"**{tag}: {home} vs {away}** ({total_picks} picks)")
+                    dist_cols = st.columns(min(len(winner_counts), 4) or 1)
+                    for i, (team, count) in enumerate(winner_counts.items()):
+                        pct = round(100 * count / total_picks) if total_picks else 0
+                        dist_cols[i % len(dist_cols)].metric(team, f"{count}", f"{pct}%")
+                    st.write("")
+
         with st.expander("🛠️ Diagnostics"):
             debug = tag_to_match.get("__debug__", {})
             st.write(f"Total API matches: `{debug.get('total_api_matches','?')}`")
