@@ -867,6 +867,15 @@ if page == "Knockout Predictions":
                         else:
                             st.error(f"❌ You earned **0/3 points** on this match.")
 
+                # Everyone's picks for this match
+                match_all_picks = all_ko_df[all_ko_df['Match_ID'].astype(str) == tag] if not all_ko_df.empty else pd.DataFrame()
+                if not match_all_picks.empty:
+                    with st.expander(f"👀 See everyone's picks ({len(match_all_picks)})"):
+                        display_df = match_all_picks[['Name', 'Home_Score', 'Away_Score', 'Winner']].copy()
+                        display_df.columns = ['Name', f'{home}', f'{away}', 'Winner']
+                        display_df = display_df.sort_values('Name').reset_index(drop=True)
+                        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
         st.subheader("1️⃣ Round of 32")
         for slot in R32_SLOTS:
             tag  = slot["id_tag"]
