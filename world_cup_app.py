@@ -601,23 +601,40 @@ elif page == "Leaderboard":
             user_picks = ko_df[ko_df['Name'].astype(str).str.strip().str.lower() == str(player_name).strip().lower()]
             total = 0
             for _, pick in user_picks.iterrows():
-                m_tag = str(pick.get('Match_ID',''))
-                match_info = tag_to_match.get(m_tag)
-                if not match_info or match_info.get('status') not in ['FINISHED','AWARDED']:
+                m_tag = str(pick.get('Match_ID', '')).strip()
+                if m_tag not in tag_to_match:
                     continue
-                ft = match_info.get('score', {})
-                # Use extraTime score if available (accounts for 120 min), else fullTime (90 min)
-                final = ft.get('extraTime') or ft.get('fullTime', {})
-                if final:
-                    if final.get('home') is not None and str(pick.get('Home_Score', '')) == str(final['home']):
-                        total += 1
-                    if final.get('away') is not None and str(pick.get('Away_Score', '')) == str(final['away']):
-                        total += 1
-                api_winner = match_info.get('winner')
-                if api_winner:
-                    actual_adv = match_info['home'] if api_winner == 'HOME_TEAM' else match_info['away']
-                    if standardize_string(str(pick.get('Winner',''))) == standardize_string(actual_adv):
-                        total += 1
+                match_info = tag_to_match[m_tag]
+                if match_info.get('status') not in ('FINISHED', 'AWARDED'):
+                    continue
+
+                score_obj = match_info.get('score') or {}
+                full_time = score_obj.get('fullTime') or {}
+                extra_time = score_obj.get('extraTime') or {}
+                # Prefer extra time score if it has real numbers, else full time
+                if extra_time.get('home') is not None and extra_time.get('away') is not None:
+                    real_home, real_away = extra_time['home'], extra_time['away']
+                else:
+                    real_home, real_away = full_time.get('home'), full_time.get('away')
+
+                pick_home = str(pick.get('Home_Score', '')).strip()
+                pick_away = str(pick.get('Away_Score', '')).strip()
+
+                if real_home is not None and pick_home == str(real_home):
+                    total += 1
+                if real_away is not None and pick_away == str(real_away):
+                    total += 1
+
+                api_winner_side = score_obj.get('winner')  # 'HOME_TEAM' / 'AWAY_TEAM'
+                if api_winner_side == 'HOME_TEAM':
+                    actual_winner_team = match_info.get('home')
+                elif api_winner_side == 'AWAY_TEAM':
+                    actual_winner_team = match_info.get('away')
+                else:
+                    actual_winner_team = None
+
+                if actual_winner_team and standardize_string(str(pick.get('Winner', ''))) == standardize_string(actual_winner_team):
+                    total += 1
             return total
 
         group_df['Group_Points']    = group_df.apply(calc_group_points, axis=1)
@@ -648,42 +665,17 @@ elif page == "Leaderboard":
             debug = tag_to_match.get("__debug__", {})
             st.write(f"Total API matches: `{debug.get('total_api_matches','?')}`")
             st.write(f"Stages: `{debug.get('knockout_by_stage',{})}`")
-            st.write(f"API teams found: `{debug.get('api_teams_found',[])}`")
-            st.write("**🔍 M73 full debug (South Africa vs Canada):**")
-            st.json(tag_to_match.get("M73", {}))
-            st.write("**R32 match statuses:**")
-            r32_status = {k: {"home": v["home"], "away": v["away"], "status": v["status"], "winner": v.get("winner"), "score": v.get("score",{}).get("fullTime",{})}
-                         for k, v in tag_to_match.items() if k in ["M73","M74","M75","M76","M77","M78","M79","M80","M81","M82","M83","M84","M85","M86","M87","M88"]}
+            st.write("**R32 match statuses (live from API):**")
+            r32_status = {k: {"home": v["home"], "away": v["away"], "status": v["status"],
+                              "winner": v.get("winner"),
+                              "fullTime": (v.get("score") or {}).get("fullTime", {})}
+                         for k, v in tag_to_match.items()
+                         if k in ["M73","M74","M75","M76","M77","M78","M79","M80",
+                                   "M81","M82","M83","M84","M85","M86","M87","M88"]}
             st.json(r32_status)
-            st.write("**Score breakdown per player:**")
-            for name in group_df['Name'].unique():
-                user_picks = ko_df[ko_df['Name'].astype(str).str.strip().str.lower() == str(name).strip().lower()] if not ko_df.empty else pd.DataFrame()
-                if user_picks.empty:
-                    continue
-                pts = 0
-                detail = []
-                for _, pick in user_picks.iterrows():
-                    m_tag = str(pick.get('Match_ID',''))
-                    mi = tag_to_match.get(m_tag, {})
-                    status = mi.get('status','?')
-                    if status not in ['FINISHED','AWARDED']:
-                        detail.append(f"{m_tag}: status={status} (skipped)")
-                        continue
-                    ft = mi.get('score',{})
-                    final = ft.get('extraTime') or ft.get('fullTime',{})
-                    earned = 0
-                    if final:
-                        if final.get('home') is not None and str(pick.get('Home_Score','')) == str(final['home']): earned += 1
-                        if final.get('away') is not None and str(pick.get('Away_Score','')) == str(final['away']): earned += 1
-                    api_winner = mi.get('winner')
-                    if api_winner:
-                        actual = mi['home'] if api_winner == 'HOME_TEAM' else mi['away']
-                        if standardize_string(str(pick.get('Winner',''))) == standardize_string(actual): earned += 1
-                    pts += earned
-                    detail.append(f"{m_tag}: +{earned} pts (status={status}, final={final}, winner={api_winner})")
-                st.write(f"**{name}** — {pts} KO pts")
-                for d in detail[:5]:
-                    st.caption(d)
+            st.write("**Knockout points per player (using live calc_knockout_points):**")
+            ko_pts_summary = {name: int(calc_knockout_points(name)) for name in group_df['Name'].astype(str).str.strip().unique()}
+            st.json(ko_pts_summary)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: KNOCKOUT PREDICTIONS
