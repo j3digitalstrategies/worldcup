@@ -609,10 +609,25 @@ elif page == "Leaderboard":
                     continue
 
                 score_obj = match_info.get('score') or {}
+                duration = score_obj.get('duration', 'REGULAR')
                 full_time = score_obj.get('fullTime') or {}
                 extra_time = score_obj.get('extraTime') or {}
-                # Prefer extra time score if it has real numbers, else full time
-                if extra_time.get('home') is not None and extra_time.get('away') is not None:
+                regular_time = score_obj.get('regularTime') or {}
+
+                # football-data.org sometimes reports fullTime as inflated by penalty
+                # shootout score (e.g. 1-1 + 3-4 pens = "4-5"). We only want the
+                # 90/120-minute score for Home/Away score points, never penalties.
+                if duration == 'PENALTY_SHOOTOUT':
+                    # Prefer explicit extraTime or regularTime fields if present
+                    if extra_time.get('home') is not None and extra_time.get('away') is not None:
+                        real_home, real_away = extra_time['home'], extra_time['away']
+                    elif regular_time.get('home') is not None and regular_time.get('away') is not None:
+                        real_home, real_away = regular_time['home'], regular_time['away']
+                    else:
+                        # Last resort: fullTime here is the actual 90/120-min score
+                        # (not all APIs inflate it) — use as-is
+                        real_home, real_away = full_time.get('home'), full_time.get('away')
+                elif extra_time.get('home') is not None and extra_time.get('away') is not None:
                     real_home, real_away = extra_time['home'], extra_time['away']
                 else:
                     real_home, real_away = full_time.get('home'), full_time.get('away')
@@ -668,7 +683,11 @@ elif page == "Leaderboard":
             st.write("**R32 match statuses (live from API):**")
             r32_status = {k: {"home": v["home"], "away": v["away"], "status": v["status"],
                               "winner": v.get("winner"),
-                              "fullTime": (v.get("score") or {}).get("fullTime", {})}
+                              "duration": (v.get("score") or {}).get("duration"),
+                              "fullTime": (v.get("score") or {}).get("fullTime", {}),
+                              "regularTime": (v.get("score") or {}).get("regularTime", {}),
+                              "extraTime": (v.get("score") or {}).get("extraTime", {}),
+                              "penalties": (v.get("score") or {}).get("penalties", {})}
                          for k, v in tag_to_match.items()
                          if k in ["M73","M74","M75","M76","M77","M78","M79","M80",
                                    "M81","M82","M83","M84","M85","M86","M87","M88"]}
