@@ -85,6 +85,22 @@ R32_FALLBACK = {
     "M88": ("Australia",     "Egypt"),       # Runner-up D vs Runner-up G
 }
 
+# Hardcoded results override — used when the API hasn't updated a finished match yet.
+# Format: tag -> {home_score, away_score, winner (HOME_TEAM/AWAY_TEAM), duration}
+# Only add entries here once a match is confirmed finished.
+# The API will naturally take over once it updates — this is a safety net only.
+RESULTS_OVERRIDE = {
+    "M73": {"home": 0, "away": 1, "winner": "AWAY_TEAM",  "duration": "REGULAR"},           # Canada 1-0 South Africa
+    "M76": {"home": 2, "away": 1, "winner": "HOME_TEAM",  "duration": "REGULAR"},           # Brazil 2-1 Japan
+    "M74": {"home": 1, "away": 1, "winner": "AWAY_TEAM",  "duration": "PENALTY_SHOOTOUT",   # Paraguay wins 4-3 pens
+            "regularTime": {"home": 1, "away": 1}, "penalties": {"home": 3, "away": 4}},
+    "M75": {"home": 1, "away": 1, "winner": "AWAY_TEAM",  "duration": "PENALTY_SHOOTOUT",   # Morocco wins 3-2 pens
+            "regularTime": {"home": 1, "away": 1}, "penalties": {"home": 2, "away": 3}},
+    "M78": {"home": 1, "away": 2, "winner": "AWAY_TEAM",  "duration": "REGULAR"},           # Norway 2-1 Ivory Coast
+    "M77": {"home": 3, "away": 1, "winner": "HOME_TEAM",  "duration": "REGULAR"},           # France 3-1 Sweden
+    "M79": {"home": 2, "away": 0, "winner": "HOME_TEAM",  "duration": "REGULAR"},           # Mexico 2-0 Ecuador
+}
+
 R32_SLOTS = [
     {"match_no": 1,  "date": "Sun, 28 Jun, 21:00", "id_tag": "M73"},
     {"match_no": 2,  "date": "Mon, 29 Jun, 19:00", "id_tag": "M76"},
@@ -324,9 +340,9 @@ def fetch_all_knockout_matches():
         all_matches = []
 
     # Index all API knockout matches by team name for score/status lookup.
-    # IMPORTANT: skip placeholder matches where the opponent isn't determined yet
-    # (awayTeam.name is null) — these are future-round slots, not real fixtures,
-    # and must never overwrite a real completed match for the same team name.
+    # Skip placeholder matches where the opponent isn't determined yet.
+    # Prioritize FINISHED matches over TIMED/SCHEDULED so a completed R32
+    # match is never overwritten by a future-round placeholder for the same team.
     api_by_team = {}
     ko_by_stage = {}
     for m in all_matches:
@@ -340,15 +356,23 @@ def fetch_all_knockout_matches():
         away_raw = (m.get('awayTeam', {}).get('name') or
                     m.get('awayTeam', {}).get('shortName') or '').strip()
 
-        # Only index this match's teams if BOTH sides are determined —
-        # otherwise it's a future bracket slot, not a real fixture to score against
+        # Skip placeholder matches with unknown opponent
         if not home_raw or not away_raw:
             continue
 
+        m_status = m.get('status', '')
         for raw in [home_raw, away_raw]:
             ct = clean_team(raw)
-            api_by_team[ct] = m
-            api_by_team[raw] = m
+            # Only overwrite an existing entry if this match is FINISHED/AWARDED
+            # and the existing one is not — never let a future TIMED match
+            # overwrite a completed one for the same team
+            existing = api_by_team.get(ct)
+            if existing is None:
+                api_by_team[ct] = m
+                api_by_team[raw] = m
+            elif m_status in ('FINISHED', 'AWARDED') and existing.get('status') not in ('FINISHED', 'AWARDED'):
+                api_by_team[ct] = m
+                api_by_team[raw] = m
 
     for stage in ko_by_stage:
         ko_by_stage[stage].sort(key=lambda x: x.get('utcDate', '9999'))
@@ -384,6 +408,30 @@ def fetch_all_knockout_matches():
             "stage_raw": matched_m.get('stage', '') if matched_m else '',
             "api_id":    matched_m.get('id') if matched_m else None,
         }
+
+    # Apply RESULTS_OVERRIDE for any match where API hasn't updated yet.
+    # Override takes priority only when API still shows SCHEDULED/TIMED for a known finished game.
+    for tag, override in RESULTS_OVERRIDE.items():
+        current = tag_to_match.get(tag, {})
+        if current.get('status') not in ('FINISHED', 'AWARDED'):
+            fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
+            score_obj = {
+                "winner":   override["winner"],
+                "duration": override["duration"],
+                "fullTime": {"home": override["home"], "away": override["away"]},
+                "regularTime": override.get("regularTime", {}),
+                "extraTime":   override.get("extraTime", {}),
+                "penalties":   override.get("penalties", {}),
+            }
+            tag_to_match[tag] = {
+                "home":      current.get("home", fb_home),
+                "away":      current.get("away", fb_away),
+                "status":    "FINISHED",
+                "score":     score_obj,
+                "winner":    override["winner"],
+                "stage_raw": current.get("stage_raw", ""),
+                "api_id":    current.get("api_id"),
+            }
 
     # ── Derive actual winners from completed R32 matches ─────────────────────
     # For each R32 match, figure out which team actually won (or is TBD if not played)
