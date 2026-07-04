@@ -576,7 +576,20 @@ elif page == "Leaderboard":
             raw_ko_records = load_knockout_picks()
             if raw_ko_records:
                 ko_df = pd.DataFrame(raw_ko_records)
-                # Ensure required columns exist
+                # Normalize column names — strip whitespace and fix known variants
+                ko_df.columns = [str(c).strip() for c in ko_df.columns]
+                col_map = {}
+                for c in ko_df.columns:
+                    cl = c.lower().replace(' ','').replace('_','')
+                    if cl == 'timestamp': col_map[c] = 'Timestamp'
+                    elif cl == 'name': col_map[c] = 'Name'
+                    elif cl == 'matchid': col_map[c] = 'Match_ID'
+                    elif cl == 'homescore': col_map[c] = 'Home_Score'
+                    elif cl == 'awayscore': col_map[c] = 'Away_Score'
+                    elif cl == 'winner': col_map[c] = 'Winner'
+                    elif cl == 'stage': col_map[c] = 'Stage'
+                ko_df = ko_df.rename(columns=col_map)
+                # Ensure all required columns exist
                 for col in ['Name', 'Match_ID', 'Home_Score', 'Away_Score', 'Winner', 'Stage', 'Timestamp']:
                     if col not in ko_df.columns:
                         ko_df[col] = ''
@@ -585,10 +598,9 @@ elif page == "Leaderboard":
                 ko_df = ko_df[ko_df['Match_ID'].astype(str).str.strip() != '']
                 ko_df = ko_df.reset_index(drop=True)
                 # Deduplicate — keep latest per (Name, Match_ID)
-                if 'Timestamp' in ko_df.columns:
-                    ko_df = ko_df.sort_values('Timestamp', ascending=True)
-                    ko_df = ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
-                    ko_df = ko_df.reset_index(drop=True)
+                ko_df = ko_df.sort_values('Timestamp', ascending=True)
+                ko_df = ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
+                ko_df = ko_df.reset_index(drop=True)
             else:
                 ko_df = pd.DataFrame(columns=['Name','Match_ID','Home_Score','Away_Score','Winner','Stage','Timestamp'])
         except Exception as e:
@@ -694,6 +706,9 @@ elif page == "Leaderboard":
         group_df['Knockout_Points'] = group_df['Name'].apply(calc_knockout_points)
         group_df['Points']          = group_df['Group_Points'] + group_df['Knockout_Points']
 
+        # Temporary diagnostic
+        st.caption(f"DEBUG: ko_df rows={len(ko_df)}, cols={list(ko_df.columns)}, M73 status={tag_to_match.get('M73',{}).get('status','?')}, M73 winner={tag_to_match.get('M73',{}).get('winner','?')}")
+
         leaderboard_df = group_df[['Name','Points','Group_Points','Knockout_Points','Status']] \
             .sort_values(by='Points', ascending=False).reset_index(drop=True)
 
@@ -779,16 +794,27 @@ if page == "Knockout Predictions":
             raw_ko = load_knockout_picks()
             if raw_ko:
                 all_ko_df = pd.DataFrame(raw_ko)
+                all_ko_df.columns = [str(c).strip() for c in all_ko_df.columns]
+                col_map = {}
+                for c in all_ko_df.columns:
+                    cl = c.lower().replace(' ','').replace('_','')
+                    if cl == 'timestamp': col_map[c] = 'Timestamp'
+                    elif cl == 'name': col_map[c] = 'Name'
+                    elif cl == 'matchid': col_map[c] = 'Match_ID'
+                    elif cl == 'homescore': col_map[c] = 'Home_Score'
+                    elif cl == 'awayscore': col_map[c] = 'Away_Score'
+                    elif cl == 'winner': col_map[c] = 'Winner'
+                    elif cl == 'stage': col_map[c] = 'Stage'
+                all_ko_df = all_ko_df.rename(columns=col_map)
                 for col in ['Name', 'Match_ID', 'Home_Score', 'Away_Score', 'Winner', 'Stage', 'Timestamp']:
                     if col not in all_ko_df.columns:
                         all_ko_df[col] = ''
                 all_ko_df = all_ko_df[all_ko_df['Name'].astype(str).str.strip() != '']
                 all_ko_df = all_ko_df[all_ko_df['Match_ID'].astype(str).str.strip() != '']
                 all_ko_df = all_ko_df.reset_index(drop=True)
-                if 'Timestamp' in all_ko_df.columns:
-                    all_ko_df = all_ko_df.sort_values('Timestamp', ascending=True)
-                    all_ko_df = all_ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
-                    all_ko_df = all_ko_df.reset_index(drop=True)
+                all_ko_df = all_ko_df.sort_values('Timestamp', ascending=True)
+                all_ko_df = all_ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
+                all_ko_df = all_ko_df.reset_index(drop=True)
             else:
                 all_ko_df = pd.DataFrame(columns=['Name','Match_ID','Home_Score','Away_Score','Winner','Stage','Timestamp'])
         except Exception as e:
