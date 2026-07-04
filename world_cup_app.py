@@ -224,16 +224,32 @@ def load_player_names():
 
 @st.cache_data(ttl=30)
 def load_knockout_picks():
-    """Cached 30 sec — shared read for all users."""
+    """Cached 30 sec — shared read for all users. Uses get_all_values for robustness."""
     ws = get_worksheet("Knockout_Picks")
-    records = ws.get_all_records()
+    values = ws.get_all_values()
+    if not values or len(values) < 2:
+        return []
+    headers = [str(h).strip() for h in values[0]]
+    records = []
+    for row in values[1:]:
+        # Pad row to match headers length
+        padded = row + [''] * (len(headers) - len(row))
+        records.append(dict(zip(headers, padded[:len(headers)])))
     return records
 
 @st.cache_data(ttl=60)
 def load_group_picks():
     """Cached 60 sec — group stage is now closed."""
     ws = get_worksheet("sheet1")
-    return ws.get_all_records()
+    values = ws.get_all_values()
+    if not values or len(values) < 2:
+        return []
+    headers = [str(h).strip() for h in values[0]]
+    records = []
+    for row in values[1:]:
+        padded = row + [''] * (len(headers) - len(row))
+        records.append(dict(zip(headers, padded[:len(headers)])))
+    return records
 
 @st.cache_data(ttl=30)
 def load_chat():
