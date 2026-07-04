@@ -722,9 +722,6 @@ elif page == "Leaderboard":
         group_df['Knockout_Points'] = group_df['Name'].apply(calc_knockout_points)
         group_df['Points']          = group_df['Group_Points'] + group_df['Knockout_Points']
 
-        # Temporary diagnostic
-        st.caption(f"DEBUG: ko_df rows={len(ko_df)}, cols={list(ko_df.columns)}, M73 status={tag_to_match.get('M73',{}).get('status','?')}, M73 winner={tag_to_match.get('M73',{}).get('winner','?')}")
-
         leaderboard_df = group_df[['Name','Points','Group_Points','Knockout_Points','Status']] \
             .sort_values(by='Points', ascending=False).reset_index(drop=True)
 
