@@ -604,8 +604,8 @@ elif page == "Leaderboard":
 
         # FIX 4: Deduplicate knockout picks — keep latest row per (Name, Match_ID)
         if not ko_df.empty and 'Timestamp' in ko_df.columns and 'Name' in ko_df.columns and 'Match_ID' in ko_df.columns:
-            ko_df = ko_df.sort_values('Timestamp').groupby(
-                ['Name','Match_ID'], as_index=False).last()
+            ko_df = ko_df.sort_values('Timestamp', ascending=True)
+            ko_df = ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
             ko_df = ko_df.reset_index(drop=True)
 
         paid_count = group_df['Status'].astype(str).str.strip().str.lower().eq('paid').sum()
@@ -626,7 +626,7 @@ elif page == "Leaderboard":
             return total
 
         def calc_knockout_points(player_name):
-            if ko_df.empty:
+            if ko_df.empty or 'Name' not in ko_df.columns or 'Match_ID' not in ko_df.columns:
                 return 0
             user_picks = ko_df[ko_df['Name'].astype(str).str.strip().str.lower() == str(player_name).strip().lower()]
             total = 0
@@ -773,9 +773,10 @@ if page == "Knockout Predictions":
             st.stop()
 
         # Deduplicate — keep latest per (Name, Match_ID)
-        if not all_ko_df.empty and 'Timestamp' in all_ko_df.columns:
-            all_ko_df = all_ko_df.sort_values('Timestamp').groupby(
-                ['Name','Match_ID'], as_index=False).last()
+        if not all_ko_df.empty and 'Timestamp' in all_ko_df.columns and 'Name' in all_ko_df.columns and 'Match_ID' in all_ko_df.columns:
+            all_ko_df = all_ko_df.sort_values('Timestamp', ascending=True)
+            all_ko_df = all_ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
+            all_ko_df = all_ko_df.reset_index(drop=True)
 
         user_ko_df = all_ko_df[
             all_ko_df['Name'].astype(str).str.strip().str.lower() == user_name.strip().lower()
