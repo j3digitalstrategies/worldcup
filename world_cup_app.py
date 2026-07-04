@@ -574,13 +574,26 @@ elif page == "Leaderboard":
 
         try:
             raw_ko_records = load_knockout_picks()
-            ko_df = pd.DataFrame(raw_ko_records) if raw_ko_records else pd.DataFrame()
+            if raw_ko_records:
+                ko_df = pd.DataFrame(raw_ko_records)
+                # Ensure required columns exist
+                for col in ['Name', 'Match_ID', 'Home_Score', 'Away_Score', 'Winner', 'Stage', 'Timestamp']:
+                    if col not in ko_df.columns:
+                        ko_df[col] = ''
+                # Remove rows with blank Name or Match_ID
+                ko_df = ko_df[ko_df['Name'].astype(str).str.strip() != '']
+                ko_df = ko_df[ko_df['Match_ID'].astype(str).str.strip() != '']
+                ko_df = ko_df.reset_index(drop=True)
+                # Deduplicate — keep latest per (Name, Match_ID)
+                if 'Timestamp' in ko_df.columns:
+                    ko_df = ko_df.sort_values('Timestamp', ascending=True)
+                    ko_df = ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
+                    ko_df = ko_df.reset_index(drop=True)
+            else:
+                ko_df = pd.DataFrame(columns=['Name','Match_ID','Home_Score','Away_Score','Winner','Stage','Timestamp'])
         except Exception as e:
             st.warning(f"⚠️ Could not load knockout picks: {e}")
-            ko_df = pd.DataFrame()
-
-        # Temporary debug - remove after fix
-        st.write(f"DEBUG: ko_df shape={ko_df.shape}, columns={list(ko_df.columns)[:5]}")
+            ko_df = pd.DataFrame(columns=['Name','Match_ID','Home_Score','Away_Score','Winner','Stage','Timestamp'])
 
     if group_sync_ok:
         st.success(group_sync_msg)
@@ -604,12 +617,6 @@ elif page == "Leaderboard":
         group_df = group_df.rename(columns=rename_dict)
         if 'Status' not in group_df.columns:
             group_df['Status'] = 'Pending'
-
-        # FIX 4: Deduplicate knockout picks — keep latest row per (Name, Match_ID)
-        if not ko_df.empty and 'Timestamp' in ko_df.columns and 'Name' in ko_df.columns and 'Match_ID' in ko_df.columns:
-            ko_df = ko_df.sort_values('Timestamp', ascending=True)
-            ko_df = ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
-            ko_df = ko_df.reset_index(drop=True)
 
         paid_count = group_df['Status'].astype(str).str.strip().str.lower().eq('paid').sum()
         st.metric("💰 Total Pool Pot", f"${paid_count * 10} USD")
@@ -770,16 +777,23 @@ if page == "Knockout Predictions":
         # FIX 5: Read knockout picks ONCE from cache, never inside draw_match_ui
         try:
             raw_ko = load_knockout_picks()
-            all_ko_df = pd.DataFrame(raw_ko) if raw_ko else pd.DataFrame()
+            if raw_ko:
+                all_ko_df = pd.DataFrame(raw_ko)
+                for col in ['Name', 'Match_ID', 'Home_Score', 'Away_Score', 'Winner', 'Stage', 'Timestamp']:
+                    if col not in all_ko_df.columns:
+                        all_ko_df[col] = ''
+                all_ko_df = all_ko_df[all_ko_df['Name'].astype(str).str.strip() != '']
+                all_ko_df = all_ko_df[all_ko_df['Match_ID'].astype(str).str.strip() != '']
+                all_ko_df = all_ko_df.reset_index(drop=True)
+                if 'Timestamp' in all_ko_df.columns:
+                    all_ko_df = all_ko_df.sort_values('Timestamp', ascending=True)
+                    all_ko_df = all_ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
+                    all_ko_df = all_ko_df.reset_index(drop=True)
+            else:
+                all_ko_df = pd.DataFrame(columns=['Name','Match_ID','Home_Score','Away_Score','Winner','Stage','Timestamp'])
         except Exception as e:
             st.error(f"❌ Could not load picks: {e}")
             st.stop()
-
-        # Deduplicate — keep latest per (Name, Match_ID)
-        if not all_ko_df.empty and 'Timestamp' in all_ko_df.columns and 'Name' in all_ko_df.columns and 'Match_ID' in all_ko_df.columns:
-            all_ko_df = all_ko_df.sort_values('Timestamp', ascending=True)
-            all_ko_df = all_ko_df.drop_duplicates(subset=['Name', 'Match_ID'], keep='last')
-            all_ko_df = all_ko_df.reset_index(drop=True)
 
         user_ko_df = all_ko_df[
             all_ko_df['Name'].astype(str).str.strip().str.lower() == user_name.strip().lower()
