@@ -757,13 +757,27 @@ elif page == "Leaderboard":
                     info = tag_to_match.get(tag, {})
                     home = info.get("home", "TBD")
                     away = info.get("away", "TBD")
-                    winner_counts = match_picks['Winner'].astype(str).str.strip().value_counts()
+
+                    # Only count picks where Winner matches one of the two valid teams
+                    # This filters out stale picks from old bracket assignments
+                    def norm(s): return s.strip().lower().replace(' ','').replace('-','').replace("'","")
+                    valid_teams = {norm(home), norm(away)} - {norm("TBD")}
+
+                    home_count = sum(1 for w in match_picks['Winner'].astype(str) if norm(w) == norm(home))
+                    away_count = sum(1 for w in match_picks['Winner'].astype(str) if norm(w) == norm(away))
+                    valid_total = home_count + away_count
                     total_picks = len(match_picks)
-                    st.markdown(f"**{tag}: {home} vs {away}** ({total_picks} picks)")
-                    dist_cols = st.columns(min(len(winner_counts), 4) or 1)
-                    for i, (team, count) in enumerate(winner_counts.items()):
-                        pct = round(100 * count / total_picks) if total_picks else 0
-                        dist_cols[i % len(dist_cols)].metric(team, f"{count}", f"{pct}%")
+                    stale = total_picks - valid_total
+
+                    st.markdown(f"**{tag}: {home} vs {away}** ({valid_total} valid picks{f', {stale} stale' if stale else ''})")
+                    if valid_total > 0:
+                        dist_cols = st.columns(2)
+                        with dist_cols[0]:
+                            pct = round(100 * home_count / valid_total)
+                            st.metric(home, f"{home_count}", f"{pct}%")
+                        with dist_cols[1]:
+                            pct = round(100 * away_count / valid_total)
+                            st.metric(away, f"{away_count}", f"{pct}%")
                     st.write("")
 
         with st.expander("🛠️ Diagnostics"):
