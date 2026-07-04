@@ -85,21 +85,6 @@ R32_FALLBACK = {
     "M88": ("Australia",     "Egypt"),       # Runner-up D vs Runner-up G
 }
 
-# Hardcoded results override — used when the API hasn't updated a finished match yet.
-# Format: tag -> {home_score, away_score, winner (HOME_TEAM/AWAY_TEAM), duration}
-# Only add entries here once a match is confirmed finished.
-# The API will naturally take over once it updates — this is a safety net only.
-RESULTS_OVERRIDE = {
-    "M73": {"home": 0, "away": 1, "winner": "AWAY_TEAM",  "duration": "REGULAR"},           # Canada 1-0 South Africa
-    "M76": {"home": 2, "away": 1, "winner": "HOME_TEAM",  "duration": "REGULAR"},           # Brazil 2-1 Japan
-    "M74": {"home": 1, "away": 1, "winner": "AWAY_TEAM",  "duration": "PENALTY_SHOOTOUT",   # Paraguay wins 4-3 pens
-            "regularTime": {"home": 1, "away": 1}, "penalties": {"home": 3, "away": 4}},
-    "M75": {"home": 1, "away": 1, "winner": "AWAY_TEAM",  "duration": "PENALTY_SHOOTOUT",   # Morocco wins 3-2 pens
-            "regularTime": {"home": 1, "away": 1}, "penalties": {"home": 2, "away": 3}},
-    "M78": {"home": 1, "away": 2, "winner": "AWAY_TEAM",  "duration": "REGULAR"},           # Norway 2-1 Ivory Coast
-    "M77": {"home": 3, "away": 1, "winner": "HOME_TEAM",  "duration": "REGULAR"},           # France 3-1 Sweden
-    "M79": {"home": 2, "away": 0, "winner": "HOME_TEAM",  "duration": "REGULAR"},           # Mexico 2-0 Ecuador
-}
 
 R32_SLOTS = [
     {"match_no": 1,  "date": "Sun, 28 Jun, 21:00", "id_tag": "M73"},
@@ -129,7 +114,7 @@ BRACKET_MAPPING = {
     # M92 = W79 vs W80  → W Mexico/Ecuador      vs W England/DR Congo
     # M93 = W83 vs W84  → W Portugal/Croatia    vs W Spain/Austria
     # M94 = W81 vs W82  → W USA/Bosnia          vs W Belgium/Senegal
-    # M95 = W86 vs W88  → W Argentina/Cape Verde vs W Colombia/Ghana
+    # M95 = W86 vs W88  → W Argentina/Cape Verde vs W Australia/Egypt
     # M96 = W85 vs W87  → W Switzerland/Algeria vs W Colombia/Ghana
     "ROUND_OF_16": {
         "M89": ("M74", "M77"),
@@ -409,29 +394,6 @@ def fetch_all_knockout_matches():
             "api_id":    matched_m.get('id') if matched_m else None,
         }
 
-    # Apply RESULTS_OVERRIDE for any match where API hasn't updated yet.
-    # Override takes priority only when API still shows SCHEDULED/TIMED for a known finished game.
-    for tag, override in RESULTS_OVERRIDE.items():
-        current = tag_to_match.get(tag, {})
-        if current.get('status') not in ('FINISHED', 'AWARDED'):
-            fb_home, fb_away = R32_FALLBACK.get(tag, ("TBD", "TBD"))
-            score_obj = {
-                "winner":   override["winner"],
-                "duration": override["duration"],
-                "fullTime": {"home": override["home"], "away": override["away"]},
-                "regularTime": override.get("regularTime", {}),
-                "extraTime":   override.get("extraTime", {}),
-                "penalties":   override.get("penalties", {}),
-            }
-            tag_to_match[tag] = {
-                "home":      current.get("home", fb_home),
-                "away":      current.get("away", fb_away),
-                "status":    "FINISHED",
-                "score":     score_obj,
-                "winner":    override["winner"],
-                "stage_raw": current.get("stage_raw", ""),
-                "api_id":    current.get("api_id"),
-            }
 
     # ── Derive actual winners from completed R32 matches ─────────────────────
     # For each R32 match, figure out which team actually won (or is TBD if not played)
@@ -447,9 +409,6 @@ def fetch_all_knockout_matches():
             return info['away']
         return None
 
-    # ── R16, QF, SF, Final: look up by team names derived from bracket ────────
-    # For each later-round match, derive the expected team names from who won
-    # the feeder R32 matches, then find the API match by those team names.
     later_round_order = [
         ("ROUND_OF_16",    "M89","M90","M91","M92","M93","M94","M95","M96"),
         ("QUARTER_FINALS", "M97","M98","M99","M100"),
@@ -457,22 +416,38 @@ def fetch_all_knockout_matches():
         ("FINAL",          "M104"),
     ]
 
+    # ── R16, QF, SF, Final: look up by team names derived from bracket ────────
+    # Maps our internal stage name to the API's stage name
+    STAGE_NAME_MAP = {
+        "ROUND_OF_16":    {"LAST_16"},
+        "QUARTER_FINALS": {"QUARTER_FINALS"},
+        "SEMI_FINALS":    {"SEMI_FINALS"},
+        "FINAL":          {"FINAL"},
+    }
+
     for round_name, *round_tags in later_round_order:
+        expected_stages = STAGE_NAME_MAP.get(round_name, set())
         for m_id in round_tags:
             src_h, src_a = BRACKET_MAPPING[round_name][m_id]
-            # Get the expected teams from whoever won the feeder matches
             expected_home = get_winner_of(src_h)
             expected_away = get_winner_of(src_a)
 
-            # Try to find the API match using either expected team name
+            # Find the API match: must contain expected team AND be in the right stage
             matched_m = None
             for name in [expected_home, expected_away]:
-                if name and name in api_by_team:
-                    candidate = api_by_team[name]
-                    if candidate.get('id') not in assigned_ids:
-                        matched_m = candidate
-                        assigned_ids.add(candidate.get('id'))
-                        break
+                if not name:
+                    continue
+                for lookup in [name, name.lower(), standardize_string(name)]:
+                    candidate = api_by_team.get(lookup)
+                    if candidate and candidate.get('id') not in assigned_ids:
+                        # Verify it's in the expected round stage
+                        c_stage = str(candidate.get('stage', '')).upper()
+                        if not expected_stages or c_stage in expected_stages:
+                            matched_m = candidate
+                            assigned_ids.add(candidate.get('id'))
+                            break
+                if matched_m:
+                    break
 
             if matched_m:
                 h_raw = (matched_m.get('homeTeam', {}).get('name') or
