@@ -579,6 +579,9 @@ elif page == "Leaderboard":
             st.warning(f"⚠️ Could not load knockout picks: {e}")
             ko_df = pd.DataFrame()
 
+        # Temporary debug - remove after fix
+        st.write(f"DEBUG: ko_df shape={ko_df.shape}, columns={list(ko_df.columns)[:5]}")
+
     if group_sync_ok:
         st.success(group_sync_msg)
     else:
