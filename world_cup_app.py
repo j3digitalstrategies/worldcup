@@ -682,20 +682,21 @@ elif page == "Leaderboard":
                 extra_time = score_obj.get('extraTime') or {}
                 regular_time = score_obj.get('regularTime') or {}
 
-                # football-data.org sometimes reports fullTime as inflated by penalty
-                # shootout score. We want the actual 90/120-minute score for
-                # Home/Away score points, never penalties.
+                # football-data.org score field semantics:
+                # - REGULAR: fullTime = final score (90 min)
+                # - EXTRA_TIME: fullTime = final score (120 min), extraTime = goals in ET only
+                # - PENALTY_SHOOTOUT: fullTime = inflated (reg + pens), regularTime = 90min score
+                # Our rules: score up to 120 min, so:
+                # - PENALTY_SHOOTOUT → use regularTime (90min score, before penalties)
+                # - EXTRA_TIME → use fullTime (actual 120min final score)
+                # - REGULAR → use fullTime (90min score)
                 if duration == 'PENALTY_SHOOTOUT':
-                    # regularTime is the cleanest source — prefer it first
                     if regular_time.get('home') is not None and regular_time.get('away') is not None:
                         real_home, real_away = regular_time['home'], regular_time['away']
-                    elif extra_time.get('home') is not None and extra_time.get('away') is not None:
-                        real_home, real_away = extra_time['home'], extra_time['away']
                     else:
                         real_home, real_away = full_time.get('home'), full_time.get('away')
-                elif extra_time.get('home') is not None and extra_time.get('away') is not None:
-                    real_home, real_away = extra_time['home'], extra_time['away']
                 else:
+                    # REGULAR or EXTRA_TIME — fullTime is always the correct final score
                     real_home, real_away = full_time.get('home'), full_time.get('away')
 
                 pick_home = str(pick.get('Home_Score', '')).strip()
@@ -858,13 +859,10 @@ if page == "Knockout Predictions":
             if duration == 'PENALTY_SHOOTOUT':
                 if regular_time.get('home') is not None and regular_time.get('away') is not None:
                     real_home, real_away = regular_time['home'], regular_time['away']
-                elif extra_time.get('home') is not None and extra_time.get('away') is not None:
-                    real_home, real_away = extra_time['home'], extra_time['away']
                 else:
                     real_home, real_away = full_time.get('home'), full_time.get('away')
-            elif extra_time.get('home') is not None and extra_time.get('away') is not None:
-                real_home, real_away = extra_time['home'], extra_time['away']
             else:
+                # REGULAR or EXTRA_TIME — fullTime is the correct final score
                 real_home, real_away = full_time.get('home'), full_time.get('away')
 
             pick_home = str(pick_row.get('Home_Score', '')).strip()
