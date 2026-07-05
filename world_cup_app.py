@@ -432,8 +432,7 @@ def fetch_all_knockout_matches():
         ("FINAL",          "M104"),
     ]
 
-    # ── R16, QF, SF, Final: look up by team names derived from bracket ────────
-    # Maps our internal stage name to the API's stage name
+    # Maps our internal round names to API stage names
     STAGE_NAME_MAP = {
         "ROUND_OF_16":    {"LAST_16"},
         "QUARTER_FINALS": {"QUARTER_FINALS"},
@@ -441,27 +440,46 @@ def fetch_all_knockout_matches():
         "FINAL":          {"FINAL"},
     }
 
+    # Build separate team->match indexes per stage for reliable R16+ lookup
+    api_by_team_by_stage = {}
+    for stage, matches in ko_by_stage.items():
+        stage_index = {}
+        for m in matches:
+            h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
+            a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
+            if not h_raw or not a_raw:
+                continue
+            for raw in [h_raw, a_raw]:
+                ct = clean_team(raw)
+                # Prefer FINISHED over TIMED within same stage
+                existing = stage_index.get(ct)
+                if existing is None or (m.get('status') in ('FINISHED','AWARDED') and existing.get('status') not in ('FINISHED','AWARDED')):
+                    stage_index[ct] = m
+                    stage_index[raw] = m
+        api_by_team_by_stage[stage] = stage_index
+
     for round_name, *round_tags in later_round_order:
-        expected_stages = STAGE_NAME_MAP.get(round_name, set())
+        expected_api_stages = STAGE_NAME_MAP.get(round_name, set())
         for m_id in round_tags:
             src_h, src_a = BRACKET_MAPPING[round_name][m_id]
             expected_home = get_winner_of(src_h)
             expected_away = get_winner_of(src_a)
 
-            # Find the API match: must contain expected team AND be in the right stage
+            # Look up ONLY in the correct API stage index
             matched_m = None
-            for name in [expected_home, expected_away]:
-                if not name:
-                    continue
-                for lookup in [name, name.lower(), standardize_string(name)]:
-                    candidate = api_by_team.get(lookup)
-                    if candidate and candidate.get('id') not in assigned_ids:
-                        # Verify it's in the expected round stage
-                        c_stage = str(candidate.get('stage', '')).upper()
-                        if not expected_stages or c_stage in expected_stages:
+            for api_stage in expected_api_stages:
+                stage_index = api_by_team_by_stage.get(api_stage, {})
+                for name in [expected_home, expected_away]:
+                    if not name:
+                        continue
+                    for lookup in [name, name.lower(), standardize_string(name)]:
+                        candidate = stage_index.get(lookup)
+                        if candidate and candidate.get('id') not in assigned_ids:
                             matched_m = candidate
                             assigned_ids.add(candidate.get('id'))
                             break
+                    if matched_m:
+                        break
                 if matched_m:
                     break
 
