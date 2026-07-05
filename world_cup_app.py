@@ -440,18 +440,19 @@ def fetch_all_knockout_matches():
         "FINAL":          {"FINAL"},
     }
 
-    # Build separate team->match indexes per stage for reliable R16+ lookup
+    # Build per-stage match lists (already sorted chronologically)
+    # For R16+: search by known winner team name, allowing one null team in API
     api_by_team_by_stage = {}
     for stage, matches in ko_by_stage.items():
         stage_index = {}
         for m in matches:
             h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
             a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
-            if not h_raw or not a_raw:
-                continue
+            # Index by any team name present (even if opponent is null)
             for raw in [h_raw, a_raw]:
+                if not raw:
+                    continue
                 ct = clean_team(raw)
-                # Prefer FINISHED over TIMED within same stage
                 existing = stage_index.get(ct)
                 if existing is None or (m.get('status') in ('FINISHED','AWARDED') and existing.get('status') not in ('FINISHED','AWARDED')):
                     stage_index[ct] = m
@@ -524,6 +525,7 @@ def fetch_all_knockout_matches():
         "total_api_matches": len(all_matches),
         "knockout_by_stage": {s: len(v) for s, v in ko_by_stage.items()},
         "api_teams_found": list(api_by_team.keys())[:20],
+        "last16_teams": list(api_by_team_by_stage.get("LAST_16", {}).keys())[:20],
         "brazil_lookup": api_by_team.get("Brazil", "NOT FOUND"),
         "japan_lookup": api_by_team.get("Japan", "NOT FOUND"),
     }
@@ -1058,7 +1060,8 @@ if page == "Knockout Predictions":
             debug = tag_to_match.get("__debug__", {})
             st.write(f"Total API matches: `{debug.get('total_api_matches','?')}`")
             st.write(f"Stages: `{debug.get('knockout_by_stage',{})}`")
-            st.write(f"API teams found: `{debug.get('api_teams_found',[])}`")
+            st.write(f"API teams found (R32 index): `{debug.get('api_teams_found',[])}`")
+            st.write(f"LAST_16 teams in stage index: `{debug.get('last16_teams',[])}`")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: GROUP PREDICTIONS (CLOSED)
