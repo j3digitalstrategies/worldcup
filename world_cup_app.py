@@ -816,6 +816,13 @@ elif page == "Leaderboard":
                          if k in ["M73","M74","M75","M76","M77","M78","M79","M80",
                                    "M81","M82","M83","M84","M85","M86","M87","M88"]}
             st.json(r32_status)
+            st.write("**R16 match statuses:**")
+            r16_status = {k: {"home": v["home"], "away": v["away"], "status": v["status"],
+                              "winner": v.get("winner"),
+                              "fullTime": (v.get("score") or {}).get("fullTime", {})}
+                         for k, v in tag_to_match.items()
+                         if k in ["M89","M90","M91","M92","M93","M94","M95","M96"]}
+            st.json(r16_status)
             st.write("**Knockout points per player (using live calc_knockout_points):**")
             ko_pts_summary = {name: int(calc_knockout_points(name)) for name in group_df['Name'].astype(str).str.strip().unique()}
             st.json(ko_pts_summary)
