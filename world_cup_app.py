@@ -700,32 +700,25 @@ elif page == "Leaderboard":
                 extra_time = score_obj.get('extraTime') or {}
                 regular_time = score_obj.get('regularTime') or {}
 
-                # football-data.org score field semantics:
-                # - REGULAR: fullTime = final score (90 min)
-                # - EXTRA_TIME: fullTime = final score (120 min), extraTime = goals in ET only
-                # - PENALTY_SHOOTOUT: fullTime = inflated (reg + pens), regularTime = 90min score
-                # Our rules: score up to 120 min, so:
-                # - PENALTY_SHOOTOUT → use regularTime (90min score, before penalties)
-                # - EXTRA_TIME → use fullTime (actual 120min final score)
-                # - REGULAR → use fullTime (90min score)
                 if duration == 'PENALTY_SHOOTOUT':
                     if regular_time.get('home') is not None and regular_time.get('away') is not None:
                         real_home, real_away = regular_time['home'], regular_time['away']
                     else:
                         real_home, real_away = full_time.get('home'), full_time.get('away')
                 else:
-                    # REGULAR or EXTRA_TIME — fullTime is always the correct final score
                     real_home, real_away = full_time.get('home'), full_time.get('away')
 
                 pick_home = str(pick.get('Home_Score', '')).strip()
                 pick_away = str(pick.get('Away_Score', '')).strip()
 
+                # Score points: awarded regardless of which team was picked to win
                 if real_home is not None and pick_home == str(real_home):
                     total += 1
                 if real_away is not None and pick_away == str(real_away):
                     total += 1
 
-                api_winner_side = score_obj.get('winner')  # 'HOME_TEAM' / 'AWAY_TEAM'
+                # Winner point: only if picked team is actually in this match AND won
+                api_winner_side = score_obj.get('winner')
                 if api_winner_side == 'HOME_TEAM':
                     actual_winner_team = match_info.get('home')
                 elif api_winner_side == 'AWAY_TEAM':
@@ -733,8 +726,13 @@ elif page == "Leaderboard":
                 else:
                     actual_winner_team = None
 
-                if actual_winner_team and standardize_string(str(pick.get('Winner', ''))) == standardize_string(actual_winner_team):
-                    total += 1
+                pick_winner = str(pick.get('Winner', '')).strip()
+                match_home = match_info.get('home', '')
+                match_away = match_info.get('away', '')
+                # Only award winner point if picked team was actually in this match
+                if actual_winner_team and standardize_string(pick_winner) == standardize_string(actual_winner_team):
+                    if standardize_string(pick_winner) in (standardize_string(match_home), standardize_string(match_away)):
+                        total += 1
             return total
 
         group_df['Group_Points']    = group_df.apply(calc_group_points, axis=1)
@@ -888,6 +886,17 @@ if page == "Knockout Predictions":
             extra_time = score_obj.get('extraTime') or {}
             regular_time = score_obj.get('regularTime') or {}
 
+            # If pick winner is not one of the two teams in this match, 0 points
+            pick_winner_check = str(pick_row.get('Winner', '')).strip()
+            match_home = match_info.get('home', '')
+            match_away = match_info.get('away', '')
+            if pick_winner_check and match_home and match_away:
+                if standardize_string(pick_winner_check) not in (
+                    standardize_string(match_home),
+                    standardize_string(match_away)
+                ):
+                    return 0
+
             if duration == 'PENALTY_SHOOTOUT':
                 if regular_time.get('home') is not None and regular_time.get('away') is not None:
                     real_home, real_away = regular_time['home'], regular_time['away']
@@ -914,8 +923,10 @@ if page == "Knockout Predictions":
             else:
                 actual_winner_team = None
 
-            if actual_winner_team and standardize_string(str(pick_row.get('Winner', ''))) == standardize_string(actual_winner_team):
-                pts += 1
+            pick_winner_final = str(pick_row.get('Winner', '')).strip()
+            if actual_winner_team and standardize_string(pick_winner_final) == standardize_string(actual_winner_team):
+                if standardize_string(pick_winner_final) in (standardize_string(match_home), standardize_string(match_away)):
+                    pts += 1
 
             return pts
 
