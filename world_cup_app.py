@@ -378,10 +378,33 @@ def fetch_all_knockout_matches():
     for stage in ko_by_stage:
         ko_by_stage[stage].sort(key=lambda x: x.get('utcDate', '9999'))
 
+    # Build per-stage team->match indexes. EVERY round looks up ONLY within its
+    # own stage index. This prevents cross-round contamination: once a team has
+    # FINISHED matches in multiple rounds (R32+R16+QF...), a global index cannot
+    # distinguish them, but a stage-scoped one always can.
+    api_by_team_by_stage = {}
+    for stage, matches in ko_by_stage.items():
+        stage_index = {}
+        for m in matches:
+            h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
+            a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
+            # Index by any team name present (even if opponent is null)
+            for raw in [h_raw, a_raw]:
+                if not raw:
+                    continue
+                ct = clean_team(raw)
+                existing = stage_index.get(ct)
+                if existing is None or (m.get('status') in ('FINISHED','AWARDED') and existing.get('status') not in ('FINISHED','AWARDED')):
+                    stage_index[ct] = m
+                    stage_index[raw] = m
+        api_by_team_by_stage[stage] = stage_index
+
     tag_to_match = {}
 
     # ── R32: fallback is source of truth for team names ──────────────────────
-    # API is used ONLY to get status/score, matched by team name.
+    # API is used ONLY to get status/score. Lookup restricted to LAST_32 stage
+    # so R16/QF matches involving the same team can never be matched by mistake.
+    r32_stage_index = api_by_team_by_stage.get("LAST_32", {})
     r32_tags = [tag for _, size, tags in ROUND_SIZES if size == 16 for tag in tags]
     assigned_ids = set()
     for tag in r32_tags:
@@ -392,8 +415,8 @@ def fetch_all_knockout_matches():
                 continue
             # Try clean name first, then raw variations
             for lookup in [name, name.lower(), standardize_string(name)]:
-                if lookup in api_by_team:
-                    candidate = api_by_team[lookup]
+                if lookup in r32_stage_index:
+                    candidate = r32_stage_index[lookup]
                     if candidate.get('id') not in assigned_ids:
                         matched_m = candidate
                         assigned_ids.add(candidate.get('id'))
@@ -439,25 +462,6 @@ def fetch_all_knockout_matches():
         "SEMI_FINALS":    {"SEMI_FINALS"},
         "FINAL":          {"FINAL"},
     }
-
-    # Build per-stage match lists (already sorted chronologically)
-    # For R16+: search by known winner team name, allowing one null team in API
-    api_by_team_by_stage = {}
-    for stage, matches in ko_by_stage.items():
-        stage_index = {}
-        for m in matches:
-            h_raw = (m.get('homeTeam', {}).get('name') or m.get('homeTeam', {}).get('shortName') or '').strip()
-            a_raw = (m.get('awayTeam', {}).get('name') or m.get('awayTeam', {}).get('shortName') or '').strip()
-            # Index by any team name present (even if opponent is null)
-            for raw in [h_raw, a_raw]:
-                if not raw:
-                    continue
-                ct = clean_team(raw)
-                existing = stage_index.get(ct)
-                if existing is None or (m.get('status') in ('FINISHED','AWARDED') and existing.get('status') not in ('FINISHED','AWARDED')):
-                    stage_index[ct] = m
-                    stage_index[raw] = m
-        api_by_team_by_stage[stage] = stage_index
 
     for round_name, *round_tags in later_round_order:
         expected_api_stages = STAGE_NAME_MAP.get(round_name, set())
@@ -987,6 +991,16 @@ if page == "Knockout Predictions":
                     if not exist_row.empty:
                         st.markdown("🟢 **Submitted**")
 
+                # If this user's SAVED pick was for a team not in this match
+                # (stale pick from before the bracket was corrected), flag it clearly
+                if not exist_row.empty:
+                    saved_winner = str(exist_row['Winner'].values[0]).strip()
+                    if saved_winner and standardize_string(saved_winner) not in (
+                        standardize_string(home), standardize_string(away)
+                    ):
+                        st.warning(f"⚠️ You picked **{saved_winner}** to advance, but {saved_winner} isn't playing in this match. "
+                                   f"Your winner pick won't count, though your score numbers may still earn points.")
+
                 # Show points earned for this match if it's finished and the user has a saved pick
                 if not exist_row.empty:
                     pts_earned = calc_match_points(tag, exist_row.iloc[0])
@@ -1005,6 +1019,19 @@ if page == "Knockout Predictions":
                     if not match_all_picks.empty:
                         with st.expander(f"👀 See everyone's picks ({len(match_all_picks)})"):
                             display_df = match_all_picks[['Name', 'Home_Score', 'Away_Score', 'Winner']].copy()
+
+                            # Flag picks where the Winner isn't one of the two teams
+                            # actually in this match (stale pick from an old bracket
+                            # assignment) — show clearly instead of silently scoring wrong
+                            def flag_winner(w):
+                                w_str = str(w).strip()
+                                if not w_str:
+                                    return w_str
+                                if standardize_string(w_str) in (standardize_string(home), standardize_string(away)):
+                                    return w_str
+                                return f"{w_str}  ⚠️ (not in this match)"
+                            display_df['Winner'] = display_df['Winner'].apply(flag_winner)
+
                             match_finished = tag_to_match.get(tag, {}).get('status') in ('FINISHED', 'AWARDED')
                             if match_finished:
                                 display_df['Points'] = match_all_picks.apply(
