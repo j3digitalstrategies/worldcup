@@ -898,17 +898,8 @@ if page == "Knockout Predictions":
             full_time = score_obj.get('fullTime') or {}
             extra_time = score_obj.get('extraTime') or {}
             regular_time = score_obj.get('regularTime') or {}
-
-            # If pick winner is not one of the two teams in this match, 0 points
-            pick_winner_check = str(pick_row.get('Winner', '')).strip()
             match_home = match_info.get('home', '')
             match_away = match_info.get('away', '')
-            if pick_winner_check and match_home and match_away:
-                if standardize_string(pick_winner_check) not in (
-                    standardize_string(match_home),
-                    standardize_string(match_away)
-                ):
-                    return 0
 
             if duration == 'PENALTY_SHOOTOUT':
                 if regular_time.get('home') is not None and regular_time.get('away') is not None:
@@ -923,6 +914,7 @@ if page == "Knockout Predictions":
             pick_away = str(pick_row.get('Away_Score', '')).strip()
 
             pts = 0
+            # Score points: always awarded regardless of which team was picked to win
             if real_home is not None and pick_home == str(real_home):
                 pts += 1
             if real_away is not None and pick_away == str(real_away):
@@ -937,6 +929,7 @@ if page == "Knockout Predictions":
                 actual_winner_team = None
 
             pick_winner_final = str(pick_row.get('Winner', '')).strip()
+            # Winner point: only if picked team is actually in this match AND won
             if actual_winner_team and standardize_string(pick_winner_final) == standardize_string(actual_winner_team):
                 if standardize_string(pick_winner_final) in (standardize_string(match_home), standardize_string(match_away)):
                     pts += 1
